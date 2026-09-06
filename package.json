@@ -6,13 +6,14 @@
   "description": "Путь джуна - Telegram Mini App платформер про карьеру в IT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && npm run check && npm run playtest && vite build",
+    "build": "tsc --noEmit && npm run check && npm run check:blocks && npm run playtest && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "esbuild scripts/check-levels.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check.mjs --log-level=error && node node_modules/.cache/check.mjs",
     "deploy": "bash scripts/deploy.sh",
     "build:worker": "esbuild worker/index.js --bundle --format=esm --target=es2022 --outfile=worker/bundle.js --log-level=error",
-    "playtest": "esbuild scripts/playtest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/playtest.mjs --log-level=error && node node_modules/.cache/playtest.mjs"
+    "playtest": "esbuild scripts/playtest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/playtest.mjs --log-level=error && node node_modules/.cache/playtest.mjs",
+    "check:blocks": "esbuild scripts/check-blocks.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/cb.mjs --log-level=error && node node_modules/.cache/cb.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

@@ -204,3 +204,27 @@ body[data-standalone="true"] .hint::after {
   color: var(--mint);
   border-color: var(--mint);
 }
+
+/*
+ * Подпись под игрой. Держим её тихой: игру открывают играть, а не читать
+ * про автора. Но ссылка на продукт и на исходники должна быть на виду -
+ * иначе игра работает вхолостую, а именно ради неё всё и затевалось.
+ */
+.credits {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--dim);
+}
+.credits a {
+  color: var(--dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.credits a b { color: var(--mint); font-weight: 700; }
+.credits a:hover { color: var(--text); border-bottom-color: var(--line); }
+.credits a:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; border-radius: 2px; }
