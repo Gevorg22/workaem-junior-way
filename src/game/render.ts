@@ -115,7 +115,9 @@ export class Renderer {
       const hh = tall ? 22 : 14;
       const hw = tall ? 46 : 30;
       for (let step = 0; step < hh; step += 2) {
-        const inset = Math.round((step / hh) * (hw / 2 - 3));
+        // step идёт сверху вниз, поэтому сужение считаем от обратного:
+        // иначе холм получается перевёрнутым.
+        const inset = Math.round((1 - step / hh) * (hw / 2 - 3));
         p(hx + inset, lv.groundY - hh + step, hw - inset * 2, 2, PAL.hill);
       }
       p(hx + hw / 2 - 4, lv.groundY - hh + 4, 3, 2, PAL.hillDark);

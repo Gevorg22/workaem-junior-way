@@ -95,7 +95,9 @@ for (let i = 0; i < 3; i++) {
   const hh = i % 2 ? 16 : 24;
   const hw = i % 2 ? 32 : 48;
   for (let step = 0; step < hh; step += 2) {
-    const inset = Math.round((step / hh) * (hw / 2 - 3));
+    // step идёт сверху вниз, поэтому сужение считаем от обратного:
+        // иначе холм получается перевёрнутым.
+        const inset = Math.round((1 - step / hh) * (hw / 2 - 3));
     paint(hx + inset, GY - hh + step, hw - inset * 2, 2, PAL.hill);
   }
 }
