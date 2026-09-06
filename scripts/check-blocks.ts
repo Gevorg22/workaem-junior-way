@@ -8,7 +8,7 @@
  */
 import { LEVELS } from "../src/game/levels";
 import { World } from "../src/game/world";
-import { MAX_PLATFORM_Y, PLAYER_H_BIG, TUNING as T } from "../src/game/tuning";
+import { MAX_PLATFORM_Y, PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TUNING as T } from "../src/game/tuning";
 import type { LevelSpec, Rect } from "../src/game/types";
 
 const BLOCK = 12;
@@ -37,6 +37,17 @@ function inspect(lv: LevelSpec): Problem[] {
   lv.blocks.forEach((b, i) => {
     const box: Rect = { x: b.x, y: b.y, w: BLOCK, h: BLOCK };
 
+    // Блок в стопке - часть конструкции: по ней лезут наверх или ломают,
+    // а не подходят снизу. Требовать от неё прохода под собой и удара
+    // снизу бессмысленно - это правила для одиночного подвесного блока.
+    const inStack = lv.blocks.some(
+      (o) => o !== b && Math.abs(o.x - b.x) < BLOCK && Math.abs(o.y - b.y - BLOCK) < 2,
+    );
+    const hasBlockAbove = lv.blocks.some(
+      (o) => o !== b && Math.abs(o.x - b.x) < BLOCK && Math.abs(b.y - o.y - BLOCK) < 2,
+    );
+    const structural = inStack || hasBlockAbove;
+
     for (const s of solids) {
       if (hit(box, s)) found.push({ kind: "пересекает опору", x: b.x, detail: `опора x=${s.x} y=${s.y}` });
     }
@@ -48,24 +59,33 @@ function inspect(lv: LevelSpec): Problem[] {
       }
     }
 
-    // Проход под блоком: тоже от ближайшей опоры, а не от земли.
+    // Опора под блоком: с неё к блоку и подходят.
     const floors = [...solids, { x: 0, y: lv.groundY, w: lv.width, h: 20 }]
-      .filter((s) => s.x < b.x + BLOCK && s.x + s.w > b.x && s.y >= b.y + BLOCK);
-    for (const f of floors) {
-      if (b.y + BLOCK > f.y - PLAYER_H_BIG) {
-        found.push({ kind: "не встать под блоком", x: b.x, detail: `опора y=${f.y}, зазор ${f.y - (b.y + BLOCK)} при росте ${PLAYER_H_BIG}` });
-        break;
-      }
+      .filter((f) => f.x < b.x + BLOCK && f.x + f.w > b.x && f.y >= b.y + BLOCK)
+      .sort((f1, f2) => f1.y - f2.y);
+    const launch = floors[0] ? floors[0].y : lv.groundY;
+
+    // Под одиночным блоком нужно помещаться стоя. Для блока в стопке это
+    // требование бессмысленно: по стопке лезут наверх, а не ходят под ней.
+    if (!structural && b.y + BLOCK > launch - PLAYER_H_BIG) {
+      found.push({
+        kind: "не встать под блоком",
+        x: b.x,
+        detail: `опора y=${launch}, зазор ${launch - (b.y + BLOCK)} при росте ${PLAYER_H_BIG}`,
+      });
     }
 
-    // Достаём ли прыжком - считаем от ближайшей опоры под блоком, а не
-    // от земли: блок над платформой берут, стоя на этой платформе.
-    const stands = [...solids, { x: 0, y: lv.groundY, w: lv.width, h: 20 }]
-      .filter((s) => s.x < b.x + BLOCK && s.x + s.w > b.x && s.y >= b.y + BLOCK)
-      .sort((a, s2) => a.y - s2.y)[0];
-    const launch = stands ? stands.y : lv.groundY;
-    if (b.y + BLOCK < launch - jumpH) {
-      found.push({ kind: "не достать прыжком", x: b.x, detail: `низ на ${b.y + BLOCK}, с опоры y=${launch} достаёт до ${(launch - jumpH).toFixed(0)}` });
+    // Бьют по блоку ГОЛОВОЙ, а не ногами - это разница в целый рост.
+    // В верхней точке прыжка ноги на launch - jumpH, макушка ещё на рост выше.
+    if (!hasBlockAbove) {
+      const headTop = launch - jumpH - PLAYER_H_SMALL - (inStack ? BLOCK : 0);
+      if (b.y + BLOCK < headTop) {
+        found.push({
+          kind: "не достать прыжком",
+          x: b.x,
+          detail: `низ на ${b.y + BLOCK}, макушка достаёт до ${headTop.toFixed(0)}`,
+        });
+      }
     }
 
     // Куда выйдет предмет.
@@ -74,6 +94,47 @@ function inspect(lv: LevelSpec): Problem[] {
       if (hit(itemSpace, s)) found.push({ kind: "предмету некуда выйти", x: b.x, detail: `сверху опора y=${s.y}` });
     }
   });
+
+  // Между блоком и балкой должно помещаться тело игрока. Иначе они
+  // мешают друг другу: подойти к блоку и запрыгнуть на балку одинаково
+  // невозможно, потому что в щель шириной меньше игрока не пролезть.
+  const MIN_GAP = PLAYER_W + 4;
+  for (const b of lv.blocks) {
+    for (const pl of lv.platforms) {
+      if (pl.h > 6) continue;
+      if (Math.abs(pl.y - (b.y + BLOCK)) > 34) continue;
+      const right = pl.x - (b.x + BLOCK);
+      const left = b.x - (pl.x + pl.w);
+      const gap = right >= 0 ? right : left >= 0 ? left : -1;
+      if (gap >= 0 && gap < MIN_GAP) {
+        found.push({
+          kind: "блок и балка теснят друг друга",
+          x: b.x,
+          detail: `зазор ${gap}px при ширине игрока ${PLAYER_W}`,
+        });
+      }
+    }
+  }
+
+  // На платформу надо не только запрыгнуть, но и уместиться на ней стоя.
+  // Блок прямо над балкой делает её бесполезной: бьёшься головой и падаешь.
+  for (const pl of lv.platforms) {
+    if (pl.h > 6) continue;
+    const standing: Rect = {
+      x: pl.x, y: pl.y - PLAYER_H_BIG, w: pl.w, h: PLAYER_H_BIG,
+    };
+    for (const b of lv.blocks) {
+      const box: Rect = { x: b.x, y: b.y, w: BLOCK, h: BLOCK };
+      if (!hit(standing, box)) continue;
+      // Насколько блок перекрывает площадку - если чуть с краю, ещё терпимо.
+      const shared = Math.min(pl.x + pl.w, b.x + BLOCK) - Math.max(pl.x, b.x);
+      found.push({
+        kind: "не встать на платформу",
+        x: pl.x,
+        detail: `блок x=${b.x} закрывает ${shared} из ${pl.w} px площадки`,
+      });
+    }
+  }
 
   // Заодно: висящие платформы не должны перекрывать проход по земле.
   for (const p of lv.platforms) {

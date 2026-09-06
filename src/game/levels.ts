@@ -1,4 +1,5 @@
 import { GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, SWAMP_Y } from "./segments";
+import { PLAYER_W } from "./tuning";
 import type { Segment } from "./segments";
 import type { BlockSpec, FoeSpec, LevelSpec, MovingSpec, Pipe, Rect, Vec } from "./types";
 
@@ -35,7 +36,10 @@ const PLATFORM_H = 4;
 
 function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   const pick = rng(bp.seed);
-  const pool = SEGMENTS.filter((s) => s.minLevel <= levelIndex);
+  // Новые виды кусков открываются каждые два уровня: игрок успевает
+  // привыкнуть к одной новинке прежде, чем появится следующая.
+  const tier = Math.floor(levelIndex / 2);
+  const pool = SEGMENTS.filter((s) => s.minLevel <= tier);
 
   const chain: Segment[] = [INTRO];
   let width = INTRO.width;
@@ -104,6 +108,22 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     offset += seg.width;
   });
 
+  // Сегменты рисуются по отдельности, а стыкуются вплотную - и на границе
+  // блок из одного куска может оказаться впритык к балке из следующего.
+  // Внутри сегмента такое не видно, поэтому чистим уже собранный уровень:
+  // в щель уже игрока не пролезть, и оба объекта становятся бесполезны.
+  const MIN_GAP = PLAYER_W + 4;
+  const keptBlocks = blocks.filter((b) => {
+    return !platforms.some((pl) => {
+      if (pl.h > 6) return false;
+      if (Math.abs(pl.y - (b.y + 12)) > 34) return false;
+      const right = pl.x - (b.x + 12);
+      const left = b.x - (pl.x + pl.w);
+      const gap = right >= 0 ? right : left >= 0 ? left : -1;
+      return gap >= 0 && gap < MIN_GAP;
+    });
+  });
+
   return {
     name: bp.name,
     grade: bp.grade,
@@ -117,7 +137,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     coffee,
     hazards,
     swamps,
-    blocks,
+    blocks: keptBlocks,
     moving,
     pipes,
     deadlineSpeed: bp.deadlineSpeed,
@@ -127,13 +147,25 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
 }
 
 /** Уровень = грейд. Темп и набор препятствий растут вместе с карьерой. */
+/**
+ * Десять уровней вместо шести, с плавным усложнением.
+ *
+ * Сложность растёт тремя рычагами сразу, а не одним: скоростью, набором
+ * доступных сегментов (minLevel) и плотностью опасного. Резких ступеней
+ * нет намеренно - человек должен успевать привыкнуть к каждой новинке
+ * прежде, чем добавится следующая.
+ */
 const BLUEPRINTS: Blueprint[] = [
-  { name: "Галера",      grade: "ДЖУН",   maxSpeed: 1.35, tint: "#1A1728", targetWidth: 2560, seed: 1104, deadlineSpeed: 0,    checkpointEvery: 7 },
-  { name: "Аутсорс",     grade: "МИДЛ",   maxSpeed: 1.45, tint: "#1B2030", targetWidth: 2880, seed: 2207, deadlineSpeed: 0,    checkpointEvery: 6 },
-  { name: "Стартап",     grade: "МИДЛ+",  maxSpeed: 1.55, tint: "#1E2438", targetWidth: 3000, seed: 3115, deadlineSpeed: 0,    checkpointEvery: 6 },
-  { name: "Продукт",     grade: "СЕНЬОР", maxSpeed: 1.65, tint: "#1E1A2E", targetWidth: 3120, seed: 3310, deadlineSpeed: 0,    checkpointEvery: 6 },
-  { name: "Корпорация",  grade: "ЛИД",    maxSpeed: 1.72, tint: "#221E38", targetWidth: 3200, seed: 5218, deadlineSpeed: 0.5,  checkpointEvery: 5 },
-  { name: "Оффер",       grade: "ФИНАЛ",  maxSpeed: 1.80, tint: "#241A2A", targetWidth: 3280, seed: 4413, deadlineSpeed: 0.58, checkpointEvery: 5 },
+  { name: "Стажировка", grade: "СТАЖЁР",  maxSpeed: 1.30, tint: "#1A1728", targetWidth: 2200, seed: 1104, deadlineSpeed: 0,    checkpointEvery: 8 },
+  { name: "Галера",     grade: "ДЖУН",    maxSpeed: 1.35, tint: "#1A1728", targetWidth: 2560, seed: 1207, deadlineSpeed: 0,    checkpointEvery: 7 },
+  { name: "Аутсорс",    grade: "ДЖУН+",   maxSpeed: 1.42, tint: "#1B2030", targetWidth: 2760, seed: 2207, deadlineSpeed: 0,    checkpointEvery: 7 },
+  { name: "Студия",     grade: "МИДЛ",    maxSpeed: 1.48, tint: "#1B2438", targetWidth: 2900, seed: 2416, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Стартап",    grade: "МИДЛ+",   maxSpeed: 1.55, tint: "#1E2438", targetWidth: 3000, seed: 3115, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Продукт",    grade: "СЕНЬОР",  maxSpeed: 1.62, tint: "#1E1A2E", targetWidth: 3120, seed: 3310, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Платформа",  grade: "СЕНЬОР+", maxSpeed: 1.68, tint: "#201C34", targetWidth: 3200, seed: 4021, deadlineSpeed: 0,    checkpointEvery: 5 },
+  { name: "Корпорация", grade: "ЛИД",     maxSpeed: 1.72, tint: "#221E38", targetWidth: 3280, seed: 5218, deadlineSpeed: 0.45, checkpointEvery: 5 },
+  { name: "Своя фирма", grade: "ФАУНДЕР", maxSpeed: 1.76, tint: "#26203A", targetWidth: 3360, seed: 6133, deadlineSpeed: 0.52, checkpointEvery: 5 },
+  { name: "Оффер",      grade: "ФИНАЛ",   maxSpeed: 1.80, tint: "#241A2A", targetWidth: 3440, seed: 4413, deadlineSpeed: 0.58, checkpointEvery: 5 },
 ];
 
 export const LEVELS: LevelSpec[] = BLUEPRINTS.map(composeLevel);

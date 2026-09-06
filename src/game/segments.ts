@@ -70,7 +70,7 @@ export const SEGMENTS: Segment[] = [
     width: 96,
     minLevel: 0,
     ground: [[0, 96]],
-    platforms: [[26, 64, 26], [62, 54, 24]],
+    platforms: [[34, 64, 26], [70, 54, 24]],
     gems: [[36, 58], [72, 45]],
     blocks: [[8, 45, "question", "offer"]],
   },
@@ -98,8 +98,8 @@ export const SEGMENTS: Segment[] = [
     // Последняя платформа укорочена, чтобы под блоком осталась чистая
     // земля. Задирать блок выше было бы хуже: он повисал бы в стороне
     // от всех опор, и до выпавшего предмета стало бы не добраться.
-    platforms: [[22, 64, 22], [50, 54, 22], [76, 64, 16]],
-    gems: [[30, 56], [58, 45], [82, 56]],
+    platforms: [[30, 64, 22], [58, 54, 22]],
+    gems: [[38, 56], [66, 45], [100, 56]],
     blocks: [[4, 45, "brick"], [96, 45, "question", "coffee"]],
   },
 
@@ -163,8 +163,8 @@ export const SEGMENTS: Segment[] = [
     minLevel: 2,
     ground: [[0, 122]],
     foes: [{ kind: "call", x: 60, y: 64, span: 36 }],
-    platforms: [[34, 62, 24], [70, 62, 24]],
-    gems: [[42, 52], [78, 52]],
+    platforms: [[42, 62, 22], [70, 62, 20]],
+    gems: [[50, 52], [78, 52]],
     blocks: [[14, 45, "brick"], [104, 45, "question", "coffee"]],
   },
   {
@@ -229,8 +229,12 @@ export const SEGMENTS: Segment[] = [
     id: "lift",
     width: 130,
     minLevel: 2,
-    ground: [[0, 36], [96, 34]],
-    hazards: [[38, 56]],
+    // Яму держим перепрыгиваемой напрямую. Если её можно пересечь только
+    // угадав момент движущейся платформы, уровень превращается в задачу
+    // на тайминг - а игру открывают из чата на минуту, а не на подвиг.
+    // Лифт остаётся удобным сокращением, а не единственным путём.
+    ground: [[0, 46], [90, 40]],
+    hazards: [[48, 42]],
     moving: [[42, 67, 22, "x", 44, 0.55]],
     gems: [[52, 56], [78, 56]],
   },
@@ -250,8 +254,8 @@ export const SEGMENTS: Segment[] = [
     minLevel: 1,
     ground: [[0, 112]],
     blocks: [[50, 45, "question", "vacation"]],
-    platforms: [[24, 62, 20], [76, 62, 20]],
-    gems: [[30, 52], [82, 52]],
+    platforms: [[20, 62, 16], [76, 62, 20]],
+    gems: [[26, 52], [82, 52]],
   },
   {
     id: "test-lab",
@@ -262,7 +266,130 @@ export const SEGMENTS: Segment[] = [
     foes: [{ kind: "bug", x: 92, span: 24 }],
     gems: [[24, 67], [110, 67]],
   },
+
+  // ── добавка: разнообразие и плавное усложнение ──
+
+  {
+    id: "coin-arc",
+    width: 104,
+    minLevel: 0,
+    ground: [[0, 104]],
+    gems: [[24, 70], [38, 58], [52, 50], [66, 58], [80, 70]],
+  },
+  {
+    id: "block-stairs",
+    width: 120,
+    minLevel: 1,
+    ground: [[0, 120]],
+    // Лестница поднята: под нижней ступенью должен помещаться большой
+    // игрок, иначе он упирается в неё, идя по земле.
+    blocks: [[20, 54, "brick"], [34, 42, "brick"], [48, 30, "question", "offer"]],
+    gems: [[86, 60], [100, 60]],
+  },
+  {
+    id: "pipe-pair",
+    width: 132,
+    minLevel: 1,
+    ground: [[0, 132]],
+    pipes: [[24, 16], [76, 24]],
+    gems: [[46, 58], [60, 58], [110, 62]],
+    foes: [{ kind: "legacy", x: 108, span: 16 }],
+  },
+  {
+    id: "narrow-ledges",
+    width: 128,
+    minLevel: 2,
+    ground: [[0, 34], [98, 30]],
+    hazards: [[36, 60]],
+    platforms: [[38, 60, 16], [62, 52, 16], [86, 60, 16]],
+    gems: [[44, 48], [68, 40], [92, 48]],
+  },
+  {
+    id: "bug-nest",
+    width: 136,
+    minLevel: 2,
+    ground: [[0, 136]],
+    foes: [
+      { kind: "bug", x: 40, span: 24 },
+      { kind: "bug", x: 96, span: 24 },
+    ],
+    platforms: [[60, 56, 20]],
+    gems: [[66, 44], [20, 62], [120, 62]],
+  },
+  {
+    id: "swamp-crossing",
+    width: 130,
+    minLevel: 2,
+    ground: [[0, 130]],
+    swamps: [[28, 70]],
+    platforms: [[44, 56, 18], [76, 56, 18]],
+    gems: [[50, 44], [82, 44]],
+    foes: [{ kind: "legacy", x: 112, span: 14 }],
+  },
+  {
+    id: "high-road",
+    width: 142,
+    minLevel: 3,
+    ground: [[0, 40], [104, 38]],
+    hazards: [[42, 60]],
+    platforms: [[36, 58, 26], [70, 58, 26]],
+    gems: [[44, 46], [78, 46], [124, 62]],
+    foes: [{ kind: "call", x: 66, y: 44, span: 20 }],
+  },
+  {
+    id: "double-lift",
+    width: 146,
+    minLevel: 3,
+    ground: [[0, 46], [72, 20], [110, 36]],
+    hazards: [[48, 22], [94, 14]],
+    moving: [[46, 58, 20, "x", 22, 0.5], [80, 58, 20, "y", -16, 0.4]],
+    gems: [[52, 46], [88, 40]],
+  },
+  {
+    id: "brick-wall",
+    width: 124,
+    minLevel: 3,
+    ground: [[0, 124]],
+    blocks: [[52, 57, "brick"], [52, 45, "brick"], [52, 33, "question", "tests"]],
+    gems: [[20, 62], [100, 62]],
+    foes: [{ kind: "bug", x: 96, span: 18 }],
+  },
+  {
+    id: "call-corridor",
+    width: 150,
+    minLevel: 4,
+    ground: [[0, 150]],
+    foes: [
+      { kind: "call", x: 44, y: 46, span: 22 },
+      { kind: "call", x: 106, y: 58, span: 22 },
+    ],
+    platforms: [[70, 50, 22]],
+    gems: [[76, 38], [24, 62], [136, 62]],
+  },
+  {
+    id: "prod-run",
+    width: 154,
+    minLevel: 4,
+    ground: [[0, 30], [126, 28]],
+    hazards: [[32, 92]],
+    platforms: [[34, 62, 20], [62, 54, 20], [90, 62, 20]],
+    gems: [[40, 50], [68, 42], [96, 50]],
+    foes: [{ kind: "bug", x: 68, span: 10 }],
+  },
+  {
+    id: "treasure",
+    width: 138,
+    minLevel: 4,
+    ground: [[0, 138]],
+    blocks: [
+      [30, 45, "brick"], [44, 45, "question", "vacation"], [58, 45, "brick"],
+      [72, 45, "question", "offer"], [86, 45, "brick"],
+    ],
+    gems: [[16, 62], [122, 62]],
+    foes: [{ kind: "legacy", x: 116, span: 14 }],
+  },
 ];
+
 
 export const INTRO: Segment = {
   id: "intro",
