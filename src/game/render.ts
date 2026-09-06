@@ -1,7 +1,10 @@
 import { PAL } from "./palette";
 import { LEVELS } from "./levels";
 import { TUNING as T } from "./tuning";
-import { drawCoffee, drawDev, drawDoor, drawFoe, drawGem, drawProd, drawSquashed, drawSwamp } from "./sprites";
+import {
+  drawCheckpoint, drawCoffee, drawDev, drawDoor,
+  drawFoe, drawGem, drawProd, drawSquashed, drawSwamp,
+} from "./sprites";
 import type { Painter } from "./sprites";
 import type { World } from "./world";
 
@@ -121,6 +124,8 @@ export class Renderer {
     }
 
     for (const s of lv.swamps) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
+
+    for (const cp of lv.checkpoints) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
 
     drawDoor(p, lv.door.x, lv.door.y - 24, w.phase === "clear");
     this.text("СОБЕС", lv.door.x - 4, lv.door.y - 28, PAL.door);

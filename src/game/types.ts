@@ -44,6 +44,8 @@ export interface LevelSpec {
   swamps: Rect[];
   /** Скорость стены дедлайна в px/кадр. 0 — стены нет. */
   deadlineSpeed: number;
+  /** Коммиты: пройденный чекпоинт становится точкой возрождения. */
+  checkpoints: Vec[];
   door: Vec;
 }
 

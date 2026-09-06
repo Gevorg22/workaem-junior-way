@@ -125,3 +125,17 @@ export function drawDoor(p: Painter, x: number, y: number, open: boolean): void 
   p(x + 1, y + 1, 14, 2, "#4A4270");
   p(x + 11, y + 13, 2, 2, PAL.gem);
 }
+
+/** Чекпоинт — коммит. Пройденный загорается мятным, непройденный серый. */
+export function drawCheckpoint(p: Painter, x: number, y: number, reached: boolean): void {
+  const pole = reached ? PAL.door : PAL.legacyDark;
+  const flag = reached ? PAL.door : PAL.doorShut;
+  p(x, y - 20, 1, 20, pole);
+  p(x - 2, y - 1, 5, 2, pole);
+  p(x + 1, y - 20, 9, 6, flag);
+  if (reached) {
+    p(x + 3, y - 18, 2, 2, PAL.sky);
+    p(x + 6, y - 18, 2, 2, PAL.sky);
+    p(x + 3, y - 16, 5, 1, PAL.sky);
+  }
+}

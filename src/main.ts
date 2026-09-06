@@ -49,6 +49,7 @@ const HAPTICS: Partial<Record<WorldEvent, () => void>> = {
   stomp: () => haptic("medium"),
   pickup: () => haptic("light"),
   coffee: () => haptic("soft"),
+  checkpoint: () => haptic("rigid"),
   hurt: () => notify("error"),
   death: () => notify("error"),
   clear: () => notify("success"),

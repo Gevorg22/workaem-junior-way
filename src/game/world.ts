@@ -21,7 +21,9 @@ export interface InputState {
   jumpPressed: boolean;
 }
 
-export type WorldEvent = "stomp" | "hurt" | "pickup" | "coffee" | "clear" | "death" | "final";
+export type WorldEvent =
+  | "stomp" | "hurt" | "pickup" | "coffee"
+  | "checkpoint" | "clear" | "death" | "final";
 
 export class World {
   levelIndex = 0;
@@ -36,6 +38,8 @@ export class World {
   particles: Particle[] = [];
   /** Позиция стены дедлайна, null — стены на уровне нет. */
   deadlineX: number | null = null;
+  /** X последнего пройденного коммита — сюда возрождаемся. */
+  checkpointX = 10;
 
   lives = T.startLives;
   score = 0;
@@ -95,6 +99,7 @@ export class World {
       };
     });
     this.particles = [];
+    this.checkpointX = 10;
     this.deadlineX = lv.deadlineSpeed > 0 ? -46 : null;
   }
 
@@ -147,9 +152,12 @@ export class World {
       return;
     }
     const lv = this.level;
-    this.player = { ...this.player, x: 10, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0 };
-    this.camera = 0;
-    if (this.deadlineX !== null) this.deadlineX = -46;
+    // Возрождение на последнем коммите, а не в начале карты:
+    // на длинной карте откат в начало обесценивает всё пройденное.
+    const x = this.checkpointX;
+    this.player = { ...this.player, x, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0 };
+    this.camera = Math.max(0, Math.min(lv.width - T.viewW, x - T.viewW / 2));
+    if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
 
   update(input: InputState): void {
@@ -275,6 +283,13 @@ export class World {
       } else {
         this.damage(f.x);
       }
+    }
+
+    for (const cp of lv.checkpoints) {
+      if (cp.x <= this.checkpointX || p.x < cp.x) continue;
+      this.checkpointX = cp.x;
+      this.burst(cp.x + 3, cp.y - 18, PAL.door, 6);
+      this.emit("checkpoint");
     }
 
     const door = { x: lv.door.x, y: lv.door.y - 24, w: 16, h: 24 };
