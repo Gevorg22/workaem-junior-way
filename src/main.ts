@@ -45,9 +45,13 @@ function fitViewport(): void {
 
   VIEW.w = Math.round(Math.max(VIEW_W_MIN, Math.min(VIEW_W_MAX, widest)));
   // Плотность экрана. На ретине холст 880 точек при CSS-ширине 880 - это
-  // половинное разрешение, и все сглаженные края выходят мылом. Потолок
-  // в 3 держит число точек в разумных пределах на телефонах.
-  const density = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  // половинное разрешение, и все сглаженные края выходят мылом.
+  //
+  // Потолок 2, а не 3: при 3 холст выходит 2640x1344, то есть 3.5 мегапикселя
+  // на кадр. На маке это ровные 16.7 мс без просадок, но игру открывают
+  // с телефона, где GPU слабее в разы. Разницы между 2 и 3 на ретине не видно,
+  // а закрашивать приходится вдвое меньше.
+  const density = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   RENDER.density = density;
   canvas.width = Math.round(VIEW.w * T.scale * density);
   canvas.height = Math.round(VIEW.h * T.scale * density);
@@ -85,6 +89,12 @@ if (import.meta.env.DEV) {
   (window as unknown as { world: World }).world = world;
 }
 const renderer = new Renderer(canvas);
+// Отладка производительности: без доступа к рендереру стоимость кадра
+// приходится мерить косвенно, по дрожанию requestAnimationFrame.
+if (import.meta.env.DEV) {
+  (window as unknown as { renderer: Renderer; render: typeof RENDER }).renderer = renderer;
+  (window as unknown as { render: typeof RENDER }).render = RENDER;
+}
 const input = new Input(canvas);
 
 input.bindButton(need<HTMLElement>("#btn-left"), "left");

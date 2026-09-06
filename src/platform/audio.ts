@@ -296,11 +296,9 @@ export function toggleMute(): boolean {
   } catch {
     // Не сохранилось - переживём, в этой сессии всё равно работает.
   }
+  // Тема перезапускается снаружи: playMusic зовётся каждый кадр и сам
+  // увидит, что таймера нет.
   if (muted) stopMusic();
-  else {
-    ensure();
-    // Тема перезапускается снаружи: playMusic зовётся каждый кадр.
-    musicTimer = null;
-  }
+  else ensure();
   return muted;
 }
