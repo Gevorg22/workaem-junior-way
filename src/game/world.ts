@@ -173,7 +173,15 @@ export class World {
     if (b.kind === "question" && !b.used) {
       b.used = true;
       // Стартуем внутри блока: за 12 кадров предмет выезжает ровно на его крышу.
-      this.items.push({ kind: b.drop ?? "coffee", x: b.x + 1, y: b.y, rise: 12, taken: false });
+      const drop = b.drop ?? "coffee";
+      // Ходячие уходят вправо, как принято в жанре: игрок идёт туда же
+      // и догоняет их по пути, а не останавливается ради подбора.
+      const walks = drop === "offer" || drop === "vacation";
+      this.items.push({
+        kind: drop, x: b.x + 1, y: b.y,
+        vx: walks ? 0.6 : 0, vy: 0,
+        rise: 12, taken: false,
+      });
       this.emit("bump");
       return;
     }
@@ -420,22 +428,48 @@ export class World {
       if (p.x < this.deadlineX + 8) { this.respawn(); return; }
     }
 
-    for (const item of this.items) {
-      // Сначала предмет выскакивает из блока, потом падает на ближайшую
-      // опору и лежит там. Висящий в воздухе предмет пришлось бы ловить
-      // прыжком в конкретной точке - это не подарок, а испытание.
+    for (let k = this.items.length - 1; k >= 0; k--) {
+      const item = this.items[k]!;
+
+      // Пока выезжает из блока - просто поднимается, физика ещё не его.
       if (item.rise > 0) {
         item.rise -= 1;
         item.y -= 0.9;
         continue;
       }
+
       if (!item.taken) {
-        const under = lv.platforms
-          .filter((pl) => item.x + 10 > pl.x && item.x < pl.x + pl.w && pl.y >= item.y + 10 - 2)
-          .sort((a, b) => a.y - b.y)[0];
-        const rest = under ? under.y - 10 : lv.groundY - 10;
-        if (item.y < rest) item.y = Math.min(rest, item.y + 1.3);
+        item.vy = Math.min(item.vy + T.gravity, 4);
+        item.x += item.vx;
+        item.y += item.vy;
+
+        const box = { x: item.x, y: item.y, w: 10, h: 10 };
+        for (const surf of [...lv.platforms, ...lv.pipes, ...this.moving]) {
+          if (!overlap(box, surf)) continue;
+          const fromAbove = item.y + 10 - item.vy <= surf.y + 1;
+          if (fromAbove) {
+            item.y = surf.y - 10;
+            item.vy = 0;
+          } else {
+            // Уткнулся в стену - разворачивается и идёт обратно.
+            item.x -= item.vx;
+            item.vx = -item.vx;
+          }
+          box.x = item.x;
+          box.y = item.y;
+        }
+
+        // Ушёл далеко за край экрана или провалился - убираем.
+        const gone =
+          item.y > VIEW.h + 40 ||
+          item.x < this.camera - 60 ||
+          item.x > this.camera + VIEW.w + 60;
+        if (gone) {
+          this.items.splice(k, 1);
+          continue;
+        }
       }
+
       if (item.taken || !overlap(p, { x: item.x, y: item.y, w: 10, h: 10 })) continue;
       item.taken = true;
       if (item.kind === "tests") {
