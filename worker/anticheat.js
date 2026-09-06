@@ -11,7 +11,7 @@
 
 /** Суммарная длина всех карт и максимальная скорость - из levels.ts и tuning.ts. */
 const TOTAL_LEVEL_WIDTH = 12350;
-const MAX_SPEED = 2.15;
+const MAX_SPEED = 1.8;
 const TOTAL_GEMS = 214;
 const TOTAL_LEVELS = 4;
 

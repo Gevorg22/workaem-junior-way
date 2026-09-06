@@ -35,7 +35,12 @@ export interface Segment {
   swamps?: Array<[number, number]>;
   /**
    * Блоки: [x, y, вид, что внутри].
-   * Ставим на высоте, куда достаёт прыжок снизу, но которую можно и обойти.
+   *
+   * Высота считается от физики, а не на глаз. Земля на y=62, игрок 15
+   * высотой, значит макушка стоящего на y=47 - низ блока обязан быть выше,
+   * иначе игрок упирается в блок вместо того, чтобы пройти под ним.
+   * Прыжок поднимает на 43px, так что достать можно всё вплоть до y=4.
+   * Рабочий диапазон y блока: от 4 до 35. Ставим 30-32.
    */
   blocks?: Array<[number, number, "question" | "brick", ("offer" | "coffee")?]>;
 }
@@ -61,9 +66,9 @@ export const SEGMENTS: Segment[] = [
     width: 96,
     minLevel: 0,
     ground: [[0, 96]],
-    platforms: [[26, 46, 26], [62, 34, 24]],
+    platforms: [[26, 42, 26], [62, 34, 24]],
     gems: [[36, 36], [72, 24]],
-    blocks: [[8, 44, "question", "offer"]],
+    blocks: [[8, 32, "question", "offer"]],
   },
   {
     id: "patrol",
@@ -78,7 +83,7 @@ export const SEGMENTS: Segment[] = [
     width: 100,
     minLevel: 0,
     ground: [[0, 38], [64, 36]],
-    platforms: [[42, 44, 20]],
+    platforms: [[42, 42, 20]],
     gems: [[50, 32]],
   },
   {
@@ -86,9 +91,9 @@ export const SEGMENTS: Segment[] = [
     width: 112,
     minLevel: 0,
     ground: [[0, 112]],
-    platforms: [[22, 44, 22], [50, 34, 22], [80, 44, 22]],
+    platforms: [[22, 42, 22], [50, 34, 22], [80, 42, 22]],
     gems: [[30, 34], [58, 24], [88, 34]],
-    blocks: [[8, 42, "brick"], [100, 42, "question", "coffee"]],
+    blocks: [[8, 32, "brick"], [96, 30, "question", "coffee"]],
   },
 
   {
@@ -107,7 +112,7 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 120]],
     foes: [{ kind: "bug", x: 60, span: 46 }],
     gems: [[26, 44], [94, 44]],
-    blocks: [[40, 42, "brick"], [52, 42, "question", "offer"], [64, 42, "brick"]],
+    blocks: [[40, 32, "brick"], [52, 32, "question", "offer"], [64, 32, "brick"]],
   },
   {
     id: "coffee-straight",
@@ -116,14 +121,14 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 108]],
     coffee: [[30, 44]],
     gems: [[64, 44], [88, 44]],
-    blocks: [[62, 40, "question", "offer"]],
+    blocks: [[62, 32, "question", "offer"]],
   },
   {
     id: "tower",
     width: 104,
     minLevel: 1,
     ground: [[0, 104]],
-    platforms: [[20, 46, 22], [48, 36, 22], [74, 26, 24]],
+    platforms: [[20, 42, 22], [48, 36, 22], [74, 26, 24]],
     gems: [[28, 36], [56, 26], [82, 16]],
   },
   {
@@ -132,7 +137,7 @@ export const SEGMENTS: Segment[] = [
     minLevel: 1,
     ground: [[0, 34], [58, 30], [104, 30]],
     hazards: [[36, 20], [90, 12]],
-    platforms: [[36, 44, 20], [88, 42, 16]],
+    platforms: [[36, 42, 20], [88, 42, 16]],
     gems: [[44, 32], [94, 30]],
   },
 
@@ -153,7 +158,7 @@ export const SEGMENTS: Segment[] = [
     foes: [{ kind: "call", x: 60, y: 44, span: 36 }],
     platforms: [[34, 40, 24], [70, 40, 24]],
     gems: [[42, 30], [78, 30]],
-    blocks: [[14, 42, "brick"], [104, 42, "question", "coffee"]],
+    blocks: [[14, 32, "brick"], [104, 32, "question", "coffee"]],
   },
   {
     id: "gauntlet",
@@ -166,7 +171,7 @@ export const SEGMENTS: Segment[] = [
     ],
     platforms: [[62, 40, 24]],
     gems: [[70, 30], [124, 44]],
-    blocks: [[24, 42, "question", "offer"], [36, 42, "brick"]],
+    blocks: [[24, 32, "question", "offer"], [36, 32, "brick"]],
   },
   {
     id: "leap-chain",
@@ -174,7 +179,7 @@ export const SEGMENTS: Segment[] = [
     minLevel: 2,
     ground: [[0, 30], [116, 30]],
     hazards: [[32, 82]],
-    platforms: [[34, 46, 18], [66, 38, 18], [96, 46, 18]],
+    platforms: [[34, 42, 18], [66, 38, 18], [96, 42, 18]],
     gems: [[40, 34], [72, 26], [102, 34]],
   },
 
@@ -187,7 +192,7 @@ export const SEGMENTS: Segment[] = [
       { kind: "call", x: 46, y: 42, span: 28 },
       { kind: "call", x: 110, y: 34, span: 30 },
     ],
-    platforms: [[30, 46, 22], [78, 36, 24], [126, 46, 22]],
+    platforms: [[30, 42, 22], [78, 36, 24], [126, 42, 22]],
     gems: [[38, 36], [86, 26], [134, 36]],
   },
   {
@@ -196,7 +201,7 @@ export const SEGMENTS: Segment[] = [
     minLevel: 3,
     ground: [[0, 46], [78, 34], [130, 28]],
     hazards: [[48, 28], [114, 14]],
-    platforms: [[48, 44, 22], [110, 42, 18]],
+    platforms: [[48, 42, 22], [110, 42, 18]],
     foes: [
       { kind: "bug", x: 96, span: 18 },
       { kind: "legacy", x: 20, span: 14 },

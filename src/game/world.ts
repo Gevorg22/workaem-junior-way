@@ -1,5 +1,5 @@
 import { levelAt, LEVELS } from "./levels";
-import { TUNING as T, VIEW } from "./tuning";
+import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
 import type {
   Block, Foe, Grade, Item, LevelSpec, Particle, Phase, Pickup, Player, Rect, RunStats,
@@ -10,6 +10,10 @@ const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
   bug: { w: 9, h: 7, speed: 0.72 },
   call: { w: 13, h: 10, speed: 0.42 },
 };
+
+/** Джун маленький, с первого оффера становится большим. */
+export const heightFor = (grade: Grade): number =>
+  grade === 0 ? PLAYER_H_SMALL : PLAYER_H_BIG;
 
 function overlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -90,13 +94,15 @@ export class World {
     const lv = levelAt(index);
     this.level = lv;
 
+    const grade = (this.player?.grade ?? 0) as Grade;
+    const height = heightFor(grade);
     this.player = {
-      x: 10, y: lv.groundY - 16, w: 9, h: 15,
+      x: 10, y: lv.groundY - height - 1, w: PLAYER_W, h: height,
       vx: 0, vy: 0, onGround: false, face: 1,
       coyote: 0, buffer: 0, hurt: 0, boost: 0,
       // Грейд переносится на следующий уровень: карьера не обнуляется
       // при переходе, только при смерти.
-      grade: (this.player?.grade ?? 0) as Grade,
+      grade,
     };
     this.camera = 0;
     this.gems = lv.gems.map((g) => ({ x: g.x, y: g.y, taken: false }));
@@ -144,7 +150,8 @@ export class World {
 
     if (b.kind === "question" && !b.used) {
       b.used = true;
-      this.items.push({ kind: b.drop ?? "coffee", x: b.x + 1, y: b.y - 10, rise: 12, taken: false });
+      // Стартуем внутри блока: за 12 кадров предмет выезжает ровно на его крышу.
+      this.items.push({ kind: b.drop ?? "coffee", x: b.x + 1, y: b.y, rise: 12, taken: false });
       this.emit("bump");
       return;
     }
@@ -163,6 +170,18 @@ export class World {
   }
 
   private hud(): void {}
+
+  /**
+   * Смена грейда меняет и рост. Ноги при этом должны остаться на месте,
+   * иначе выросший игрок проваливается в пол или подпрыгивает.
+   */
+  private setGrade(grade: Grade): void {
+    const p = this.player;
+    const feet = p.y + p.h;
+    p.grade = grade;
+    p.h = heightFor(grade);
+    p.y = feet - p.h;
+  }
 
   private burst(x: number, y: number, color: string, count: number): void {
     for (let i = 0; i < count; i++) {
@@ -190,7 +209,7 @@ export class World {
     this.shake = T.shakeFrames;
 
     if (p.grade > 0) {
-      p.grade = (p.grade - 1) as Grade;
+      this.setGrade((p.grade - 1) as Grade);
       this.burst(p.x + 4, p.y + 6, PAL.gem, 10);
       this.emit("gradeDown");
       return;
@@ -215,7 +234,11 @@ export class World {
     // на длинной карте откат в начало обесценивает всё пройденное.
     const x = this.checkpointX;
     // Смерть обнуляет карьеру: начинаем с джуна.
-    this.player = { ...this.player, x, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0, grade: 0 };
+    this.player = {
+      ...this.player,
+      x, y: lv.groundY - PLAYER_H_SMALL - 1,
+      h: PLAYER_H_SMALL, vx: 0, vy: 0, hurt: 40, boost: 0, grade: 0,
+    };
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
@@ -268,7 +291,8 @@ export class World {
 
     p.vy = Math.min(p.vy + T.gravity, T.maxFall);
 
-    // Блоки - такие же твёрдые, как платформы, пока не разбиты.
+    // По горизонтали блок ничем не отличается от платформы: и то и другое
+    // просто останавливает. Различать их нужно только по вертикали.
     const solids: Rect[] = [
       ...lv.platforms,
       ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
@@ -288,19 +312,27 @@ export class World {
     p.y += p.vy;
     const wasGround = p.onGround;
     p.onGround = false;
-    for (const pl of solids) {
+    for (const pl of lv.platforms) {
       if (!overlap(p, pl)) continue;
       if (p.vy > 0) { p.y = pl.y - p.h; p.vy = 0; p.onGround = true; }
       else if (p.vy < 0) { p.y = pl.y + pl.h; p.vy = 0.4; }
     }
 
-    // Удар снизу: главный жест жанра. Определяем по движению вверх и по тому,
-    // что макушка оказалась выше низа блока.
-    if (p.vy <= 0.4) {
-      for (const b of this.blocks) {
-        if (b.broken) continue;
-        if (!overlap(p, { x: b.x, y: b.y, w: 12, h: 12 })) continue;
-        if (p.y > b.y + 8) continue;
+    // Блоки разбираем отдельно от платформ, потому что удар снизу нужно
+    // поймать ИМЕННО в момент столкновения. Разрешение столкновения тут же
+    // выталкивает игрока из блока, и проверка пересечения после цикла
+    // не находит уже ничего - блок оставался целым.
+    for (const b of this.blocks) {
+      if (b.broken) continue;
+      const box = { x: b.x, y: b.y, w: 12, h: 12 };
+      if (!overlap(p, box)) continue;
+      if (p.vy > 0) {
+        p.y = box.y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+      } else if (p.vy < 0) {
+        p.y = box.y + box.h;
+        p.vy = 0.4;
         this.hitBlock(b);
       }
     }
@@ -318,11 +350,25 @@ export class World {
     }
 
     for (const item of this.items) {
-      if (item.rise > 0) { item.rise -= 1; item.y -= 0.6; continue; }
+      // Сначала предмет выскакивает из блока, потом падает на ближайшую
+      // опору и лежит там. Висящий в воздухе предмет пришлось бы ловить
+      // прыжком в конкретной точке - это не подарок, а испытание.
+      if (item.rise > 0) {
+        item.rise -= 1;
+        item.y -= 0.9;
+        continue;
+      }
+      if (!item.taken) {
+        const under = lv.platforms
+          .filter((pl) => item.x + 10 > pl.x && item.x < pl.x + pl.w && pl.y >= item.y + 10 - 2)
+          .sort((a, b) => a.y - b.y)[0];
+        const rest = under ? under.y - 10 : lv.groundY - 10;
+        if (item.y < rest) item.y = Math.min(rest, item.y + 1.3);
+      }
       if (item.taken || !overlap(p, { x: item.x, y: item.y, w: 10, h: 10 })) continue;
       item.taken = true;
       if (item.kind === "offer" && p.grade < 2) {
-        p.grade = (p.grade + 1) as Grade;
+        this.setGrade((p.grade + 1) as Grade);
         this.score += 300;
         this.burst(item.x + 5, item.y + 5, PAL.gem, 12);
         this.emit("gradeUp");
@@ -393,8 +439,12 @@ export class World {
       this.emit("checkpoint");
     }
 
-    const door = { x: lv.door.x, y: lv.door.y - 24, w: 16, h: 24 };
-    if (p.x + p.w > door.x + 2 && overlap(p, door)) {
+    // Финиш - вертикальная линия, а не коробка. Дверь высотой 24 пикселя
+    // от земли, и прилетевший в прыжке игрок оказывался выше неё: уровень
+    // не засчитывался, а за дверью оставалось всего 5 пикселей хода до
+    // стены, где он и застревал навсегда.
+    if (p.x + p.w > lv.door.x + 8) {
+      const door = { x: lv.door.x, y: lv.door.y - 24, w: 16, h: 24 };
       this.score += T.scoreLevelClear + this.lives * T.scoreLifeBonus;
       this.stats.levelsCleared += 1;
       this.phase = "clear";

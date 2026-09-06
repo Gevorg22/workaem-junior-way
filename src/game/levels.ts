@@ -118,10 +118,10 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
 
 /** Уровень = грейд. Темп и набор препятствий растут вместе с карьерой. */
 const BLUEPRINTS: Blueprint[] = [
-  { name: "Галера",  grade: "ДЖУН",   maxSpeed: 1.55, tint: "#1A1728", targetWidth: 2560, seed: 1104, deadlineSpeed: 0,    checkpointEvery: 7 },
-  { name: "Аутсорс", grade: "МИДЛ",   maxSpeed: 1.75, tint: "#1B2030", targetWidth: 2880, seed: 2207, deadlineSpeed: 0,    checkpointEvery: 6 },
-  { name: "Продукт", grade: "СЕНЬОР", maxSpeed: 1.95, tint: "#1E1A2E", targetWidth: 3120, seed: 3310, deadlineSpeed: 0,    checkpointEvery: 6 },
-  { name: "Оффер",   grade: "ЛИД",    maxSpeed: 2.15, tint: "#241A2A", targetWidth: 3280, seed: 4413, deadlineSpeed: 0.72, checkpointEvery: 5 },
+  { name: "Галера",  grade: "ДЖУН",   maxSpeed: 1.35, tint: "#1A1728", targetWidth: 2560, seed: 1104, deadlineSpeed: 0,    checkpointEvery: 7 },
+  { name: "Аутсорс", grade: "МИДЛ",   maxSpeed: 1.50, tint: "#1B2030", targetWidth: 2880, seed: 2207, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Продукт", grade: "СЕНЬОР", maxSpeed: 1.65, tint: "#1E1A2E", targetWidth: 3120, seed: 3310, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Оффер",   grade: "ЛИД",    maxSpeed: 1.80, tint: "#241A2A", targetWidth: 3280, seed: 4413, deadlineSpeed: 0.58, checkpointEvery: 5 },
 ];
 
 export const LEVELS: LevelSpec[] = BLUEPRINTS.map(composeLevel);

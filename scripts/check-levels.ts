@@ -1,5 +1,5 @@
 import { LEVELS } from "../src/game/levels";
-import { TUNING as T } from "../src/game/tuning";
+import { MAX_PLATFORM_Y, PLAYER_H_BIG, TUNING as T } from "../src/game/tuning";
 import type { LevelSpec } from "../src/game/types";
 
 /** Горизонтальная дальность прыжка и высота подъёма из физики в tuning. */
@@ -47,13 +47,32 @@ function findBlocker(lv: LevelSpec): { x: number; gap: number } | null {
   return { x: edge, gap: next ? next.x - edge : Infinity };
 }
 
+/**
+ * Платформа, под которой нельзя пройти, намертво запирает уровень:
+ * большой игрок упирается в неё, стоя на земле. Проверка ловит именно это -
+ * ошибка, которую валидатор проходимости не видел, потому что смотрел
+ * только на дырки в полу.
+ *
+ * Лестницу финиша исключаем: на неё запрыгивают, а не проходят под ней.
+ */
+function blockedClearance(lv: LevelSpec): Array<{ x: number; y: number }> {
+  const ground = lv.platforms.filter((p) => p.h > 6);
+  const headroom = lv.groundY - PLAYER_H_BIG;
+  return lv.platforms
+    .filter((p) => p.h <= 6 && p.y > MAX_PLATFORM_Y && p.y + p.h > headroom)
+    .filter((p) => ground.some((g) => p.x < g.x + g.w && p.x + p.w > g.x))
+    .filter((p) => p.x < lv.width - 120)
+    .map((p) => ({ x: p.x, y: p.y }));
+}
+
 let failures = 0;
 
 for (const [i, lv] of LEVELS.entries()) {
   const blocker = findBlocker(lv);
+  const tooLow = blockedClearance(lv);
   const ground = lv.platforms.filter((p) => p.h > 6);
   const doorOnGround = ground.some((g) => lv.door.x >= g.x && lv.door.x <= g.x + g.w);
-  if (blocker || !doorOnGround) failures++;
+  if (blocker || !doorOnGround || tooLow.length) failures++;
 
   console.log(
     `${i + 1}. ${lv.name.padEnd(8)} ${lv.grade.padEnd(7)}` +
@@ -64,7 +83,8 @@ for (const [i, lv] of LEVELS.entries()) {
       `  кофе ${lv.coffee.length}` +
       `  прод ${String(lv.hazards.length).padStart(2)}` +
       `  ${blocker ? `ТУПИК @${blocker.x} (яма ${blocker.gap})` : "проходима"}` +
-      `${doorOnGround ? "" : "  ДВЕРЬ В ВОЗДУХЕ"}`,
+      `${doorOnGround ? "" : "  ДВЕРЬ В ВОЗДУХЕ"}` +
+      `${tooLow.length ? `  НЕ ПРОЛЕЗТЬ под ${tooLow.length} платформами @${tooLow[0]!.x}` : ""}`,
   );
 }
 

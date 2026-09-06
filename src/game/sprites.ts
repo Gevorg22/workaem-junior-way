@@ -18,19 +18,49 @@ export interface DevPose {
   grade: Grade;
 }
 
+/** Джун: та же фигура, сжатая до 11 пикселей - короче торс и ноги. */
+function drawSmallDev(p: Painter, x: number, y: number, pose: DevPose): void {
+  const { face, walking, airborne, stride } = pose;
+
+  p(x + 1, y, 7, 2, PAL.hair);
+  p(x, y + 1, 9, 2, PAL.hair);
+  p(x + 1, y + 2, 7, 3, PAL.skin);
+  p(x + (face > 0 ? 5 : 2), y + 3, 1, 1, PAL.eye);
+
+  p(x, y + 5, 9, 4, PAL.shirt);
+  p(x, y + 5, 9, 1, PAL.shirtLite);
+  p(x + (face > 0 ? 0 : 6), y + 6, 3, 2, PAL.shirtDark);
+
+  if (airborne) {
+    p(x + 1, y + 9, 3, 2, PAL.pants);
+    p(x + 5, y + 9, 3, 1, PAL.pants);
+  } else if (walking && stride) {
+    p(x, y + 9, 3, 2, PAL.pants);
+    p(x + 6, y + 9, 3, 2, PAL.pants);
+  } else {
+    p(x + 1, y + 9, 3, 2, PAL.pants);
+    p(x + 5, y + 9, 3, 2, PAL.pants);
+  }
+  p(x, y + 10, 4, 1, PAL.shoe);
+  p(x + 5, y + 10, 4, 1, PAL.shoe);
+
+  const laptopX = face > 0 ? x + 8 : x - 3;
+  p(laptopX, y + 6, 3, 2, PAL.laptop);
+}
+
 export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
   const { face, walking, airborne, stride, grade } = pose;
 
-  // Рост рисуем вверх от хитбокса: голова торчит выше, столкновения не меняются.
-  if (grade >= 1) {
-    p(x + 1, y - 3, 7, 3, PAL.hair);
-    p(x, y - 2, 9, 2, PAL.hair);
+  if (grade === 0) {
+    drawSmallDev(p, x, y, pose);
+    return;
   }
+
   if (grade === 2) {
     // Наушники - самый быстрый способ показать сеньора одним силуэтом.
-    p(x - 1, y - 2, 2, 5, PAL.headphones);
-    p(x + 8, y - 2, 2, 5, PAL.headphones);
-    p(x, y - 4, 9, 2, PAL.headphones);
+    p(x - 1, y, 2, 5, PAL.headphones);
+    p(x + 8, y, 2, 5, PAL.headphones);
+    p(x, y - 2, 9, 2, PAL.headphones);
   }
 
   p(x + 1, y, 7, 2, PAL.hair);
