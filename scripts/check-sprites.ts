@@ -11,20 +11,37 @@
  * верхней границей и есть настоящий рост спрайта.
  */
 import { drawBoss, drawDev, drawFoe } from "../src/game/sprites";
+import type { Painter } from "../src/game/sprites";
 import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W } from "../src/game/tuning";
 import { FOE_SIZE } from "../src/game/world";
 
 interface Bounds { top: number; bottom: number; left: number; right: number }
 
-function measure(draw: (paint: (x: number, y: number, w: number, h: number, c: string) => void) => void): Bounds {
+/**
+ * Подложная кисть: вместо закраски запоминает габариты каждой формы.
+ * Понимает все примитивы, иначе перерисованный на кривых спрайт измерялся
+ * бы лишь по своим прямоугольникам и проверка врала бы.
+ */
+function measure(draw: (paint: Painter) => void): Bounds {
   const b: Bounds = { top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity };
-  draw((x, y, w, h) => {
+  const add = (x: number, y: number, w: number, h: number): void => {
     if (w <= 0 || h <= 0) return;
     b.top = Math.min(b.top, y);
     b.bottom = Math.max(b.bottom, y + h);
     b.left = Math.min(b.left, x);
     b.right = Math.max(b.right, x + w);
-  });
+  };
+  const brush = ((x: number, y: number, w: number, h: number) => add(x, y, w, h)) as Painter;
+  brush.round = (x, y, w, h) => add(x, y, w, h);
+  brush.grad = (x, y, w, h) => add(x, y, w, h);
+  brush.circle = (cx, cy, r) => add(cx - r, cy - r, r * 2, r * 2);
+  brush.oval = (cx, cy, rx, ry) => add(cx - rx, cy - ry, rx * 2, ry * 2);
+  // Мягкое пятно к силуэту не относится: это свечение вокруг, а не тело.
+  brush.glow = () => undefined;
+  brush.poly = (pts) => {
+    for (const [x, y] of pts) add(x, y, 0.0001, 0.0001);
+  };
+  draw(brush);
   return b;
 }
 
@@ -47,7 +64,7 @@ for (const grade of [0, 1, 2] as const) {
       );
       // Подошва обязана лежать ровно на нижней грани хитбокса. Верх может
       // торчать выше - наушники сеньора рисуются над головой намеренно.
-      const soleOk = b.bottom === expect;
+      const soleOk = Math.abs(b.bottom - expect) < 0.51;
       const headOk = b.top <= 0;
       const widthOk = b.right - b.left <= PLAYER_W + 6; // ноутбук и наушники торчат по бокам
       const ok = soleOk && headOk && widthOk;
@@ -72,7 +89,7 @@ console.log("\nбосс:");
     const b = measure((paint) => drawBoss(paint, 0, 0, W, H, { face: 1, stride: false, flash: false, hp }));
     // Деления жизни рисуются над головой - это осознанно, поэтому проверяем
     // только низ: босс обязан стоять на своей нижней грани, а не над ней.
-    const ok = b.bottom === H;
+    const ok = Math.abs(b.bottom - H) < 0.51;
     if (!ok) { bad++; console.log(`  ✗ hp=${hp}: низ на ${b.bottom}, а бокс ${H}`); }
     else console.log(`  hp=${hp}: бокс ${W}x${H}, нарисовано до ${b.bottom}, деления на ${b.top}`);
   }
@@ -86,7 +103,7 @@ for (const kind of ["legacy", "bug", "call"] as const) {
     // Низ обязан совпасть точно: враг стоит на своей нижней грани.
     // Верх может быть ниже нуля у парящих - созвон намеренно не касается
     // верхней грани, он же висит в воздухе.
-    const soleOk = b.bottom === box.h;
+    const soleOk = Math.abs(b.bottom - box.h) < 0.51;
     const widthOk = b.right - b.left <= box.w;
     if (!soleOk || !widthOk) {
       bad++;
@@ -97,7 +114,7 @@ for (const kind of ["legacy", "bug", "call"] as const) {
     }
   }
   const b = measure((paint) => drawFoe(paint, kind, 0, 0, true));
-  if (b.bottom === box.h) {
+  if (Math.abs(b.bottom - box.h) < 0.51) {
     console.log(`  ${kind.padEnd(7)} хитбокс ${box.w}x${box.h}, спрайт до ${b.bottom} - совпадает`);
   }
 }

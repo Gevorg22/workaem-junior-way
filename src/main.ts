@@ -2,7 +2,7 @@ import "./style.css";
 import { LEVELS } from "./game/levels";
 import { PAL } from "./game/palette";
 import { Renderer } from "./game/render";
-import { TICKS_PER_SECOND, TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
+import { RENDER, TICKS_PER_SECOND, TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
 import { GRADE_NAMES } from "./game/types";
 import { World } from "./game/world";
 import type { WorldEvent } from "./game/world";
@@ -44,8 +44,13 @@ function fitViewport(): void {
   const widest = (frameWidth * VIEW.h) / (MIN_SCREEN_SHARE * screenHeight);
 
   VIEW.w = Math.round(Math.max(VIEW_W_MIN, Math.min(VIEW_W_MAX, widest)));
-  canvas.width = VIEW.w * T.scale;
-  canvas.height = VIEW.h * T.scale;
+  // Плотность экрана. На ретине холст 880 точек при CSS-ширине 880 - это
+  // половинное разрешение, и все сглаженные края выходят мылом. Потолок
+  // в 3 держит число точек в разумных пределах на телефонах.
+  const density = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  RENDER.density = density;
+  canvas.width = Math.round(VIEW.w * T.scale * density);
+  canvas.height = Math.round(VIEW.h * T.scale * density);
 }
 
 fitViewport();

@@ -60,6 +60,12 @@ export const PAL = {
   shoe: "#5A3418",
   laptop: "#D8D8E8",
   eye: "#2B2438",
+  /** Полутона для градиентов: объём делается переходом, а не ступенькой. */
+  skinLite: "#FFE0BC",
+  skinShade: "#D9A578",
+  hairLite: "#4A3A56",
+  pantsLite: "#4E63A8",
+  shoeLite: "#7A4A22",
   headphones: "#2C2C3A",
   /** Блик на наушниках: без него они сливались с волосами в тёмное пятно. */
   headphonesLite: "#6E7A96",

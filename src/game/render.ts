@@ -1,6 +1,6 @@
 import { PAL, UNDERGROUND } from "./palette";
 import { LEVELS } from "./levels";
-import { TUNING as T, VIEW } from "./tuning";
+import { RENDER, TUNING as T, VIEW } from "./tuning";
 import {
   drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
   drawBoss, drawItem, drawLift, drawPipe, drawProd, drawQuestion, drawShot, drawSquashed, drawSwamp,
@@ -16,11 +16,76 @@ export class Renderer {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D недоступен");
     this.ctx = ctx;
-    this.ctx.imageSmoothingEnabled = false;
-    this.paint = (x, y, w, h, color) => {
-      this.ctx.fillStyle = color;
-      this.ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    // Сглаживание включено: картинка больше не складывается из кубиков,
+    // а формы рисуются кривыми с мягким краем.
+    this.ctx.imageSmoothingEnabled = true;
+    this.paint = Renderer.makeBrush(ctx);
+  }
+
+  /**
+   * Кисть поверх контекста. Координаты НЕ округляются - именно округление
+   * раньше загоняло всё в крупную сетку и делало пиксели видимыми.
+   */
+  private static makeBrush(ctx: CanvasRenderingContext2D): Painter {
+    const brush = ((x: number, y: number, w: number, h: number, color: string): void => {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }) as Painter;
+
+    const path = (color: string, build: () => void): void => {
+      ctx.beginPath();
+      build();
+      ctx.fillStyle = color;
+      ctx.fill();
     };
+
+    brush.round = (x, y, w, h, r, color) => {
+      const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+      path(color, () => ctx.roundRect(x, y, w, h, rr));
+    };
+
+    brush.circle = (cx, cy, r, color) => {
+      path(color, () => ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2));
+    };
+
+    brush.oval = (cx, cy, rx, ry, color) => {
+      path(color, () => ctx.ellipse(cx, cy, Math.max(0, rx), Math.max(0, ry), 0, 0, Math.PI * 2));
+    };
+
+    brush.grad = (x, y, w, h, top, bottom, r = 0) => {
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, top);
+      g.addColorStop(1, bottom);
+      ctx.fillStyle = g;
+      if (r > 0) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2));
+        ctx.fill();
+      } else {
+        ctx.fillRect(x, y, w, h);
+      }
+    };
+
+    brush.glow = (cx, cy, r, color) => {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(0.01, r));
+      g.addColorStop(0, color);
+      g.addColorStop(1, "transparent");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    brush.poly = (pts, color) => {
+      if (pts.length < 3) return;
+      path(color, () => {
+        ctx.moveTo(pts[0]![0], pts[0]![1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1]);
+        ctx.closePath();
+      });
+    };
+
+    return brush;
   }
 
   private text(str: string, x: number, y: number, color: string, size = 7, display = false): void {
@@ -42,7 +107,8 @@ export class Renderer {
   draw(w: World): void {
     const ctx = this.ctx;
     const p = this.paint;
-    ctx.setTransform(T.scale, 0, 0, T.scale, 0, 0);
+    const k = T.scale * RENDER.density;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
 
     ctx.save();
     ctx.translate(w.shake > 0 ? Math.round((Math.random() - 0.5) * 2) : 0, 0);
@@ -113,51 +179,55 @@ export class Renderer {
       }
     }
 
-    // Земля толщиной 15, а кадр 112: под ней оставался просвет неба,
-    // и низ экрана выглядел так, будто мир висит в воздухе.
-    if (lv.theme !== "underground") {
-      p(0, lv.groundY + 15, VIEW.w, VIEW.h - lv.groundY - 15, PAL.groundEdge);
-    }
-
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
     // создаёт то самое ощущение тесноты, ради которого всё затевалось.
     if (lv.theme === "underground") {
       const c = UNDERGROUND;
-      p(0, 0, VIEW.w, 10, c.ground);
-      p(0, 8, VIEW.w, 2, c.groundDark);
-      for (let x = 0; x < VIEW.w; x += 10) p(x, 0, 1, 8, c.groundEdge);
+      // Потолок: градиент вниз, мягкие швы кладки и капли-сталактиты.
+      p.grad(0, 0, VIEW.w, 11, c.groundLite, c.ground);
+      p.round(0, 9, VIEW.w, 2, 0.8, c.groundDark);
+      for (let x = 0; x < VIEW.w; x += 12) {
+        p.round(x - ((w.camera * 0.5) % 12), 0, 0.8, 9, 0.4, c.groundEdge);
+      }
       for (let i = 0; i < 10; i++) {
         const gx = i * 46 - ((w.camera * 0.5) % 46);
-        p(gx, 10, 8, 3, c.groundDark);
+        p.oval(gx + 4, 11, 4.4, 3.2, c.groundDark);
+      }
+      // Своды в глубине: намёк на объём, иначе за потолком пустая плашка.
+      for (let i = 0; i < 8; i++) {
+        const ax = i * 84 - ((w.camera * 0.22) % 84);
+        p.oval(ax + 30, lv.groundY, 34, 26, "rgba(255,255,255,.035)");
       }
       return;
     }
 
+    // Облака: несколько кругов внахлёст. Сложенные из прямоугольников,
+    // они читались как лесенка - у облака не бывает прямых углов.
     for (let c = 0; c < 6; c++) {
       let cx = (c * 86 - w.camera * 0.14) % (VIEW.w + 100);
       if (cx < -70) cx += VIEW.w + 100;
-      const cy = 6 + ((c * 19) % 12);
-      // Три размера облаков вместо одного - небо перестаёт быть штампованным.
-      const size = c % 3;
-      const cw = 16 + size * 5;
-      p(cx + 4, cy, cw, 4, PAL.cloud);
-      p(cx, cy + 3, cw + 8, 5, PAL.cloud);
-      p(cx + 7, cy - 3, cw - 6, 4, PAL.cloud);
-      if (size === 2) p(cx + cw, cy - 1, 6, 4, PAL.cloud);
-      p(cx, cy + 7, cw + 8, 1, PAL.cloudShade);
+      const cy = 8 + ((c * 19) % 12);
+      const size = 0.8 + ((c * 7) % 5) * 0.14;
+      const puffs: Array<readonly [number, number, number]> = [
+        [0, 2, 4.6], [5.5, 0, 6], [12, 1.4, 5], [17.5, 3, 3.8], [8, 3.4, 5.4],
+      ];
+      for (const [dx, dy, r] of puffs) {
+        p.oval(cx + dx * size, cy + dy * size + 1, r * size * 1.05, r * size * 0.86, PAL.cloudShade);
+      }
+      for (const [dx, dy, r] of puffs) {
+        p.oval(cx + dx * size, cy + dy * size, r * size, r * size * 0.82, PAL.cloud);
+      }
     }
 
     // Дальняя гряда: выцветшая расстоянием и почти неподвижная. Она не
     // читается сама по себе, но без неё горизонт упирается в плоскую заливку.
+    // Купол рисуется овалом: нижняя половина уходит под землю и не видна.
     for (let i = 0; i < 8; i++) {
       const fx = i * 118 - ((w.camera * 0.16) % 118);
       const fh = 26 + ((i * 37) % 12);
       const fw = 70 + ((i * 53) % 30);
-      for (let step = 0; step < fh; step += 2) {
-        const inset = Math.round((1 - step / fh) * (fw / 2 - 4));
-        p(fx + inset, lv.groundY - fh + step, fw - inset * 2, 2, PAL.hillFar);
-      }
-      p(fx + fw / 2 - 2, lv.groundY - fh + 2, 4, 3, PAL.hillFarDark);
+      p.oval(fx + fw / 2, lv.groundY, fw / 2, fh, PAL.hillFar);
+      p.oval(fx + fw / 2 - fw * 0.14, lv.groundY, fw / 3.4, fh * 0.82, PAL.hillFarDark);
     }
 
     // Офисные башни. Ширина, высота и горящие окна пляшут от индекса:
@@ -167,21 +237,22 @@ export class Renderer {
       const bh = 22 + ((i * 29) % 20);
       const bw = 16 + ((i * 13) % 12);
       const dark = i % 2 === 1;
-      p(bx, lv.groundY - bh, bw, bh, dark ? PAL.towerDark : PAL.tower);
+      p.grad(bx, lv.groundY - bh, bw, bh, dark ? PAL.towerDark : PAL.tower, PAL.towerRoof, 1.2);
       // Кромка крыши: без неё башня сливается с небом.
-      p(bx, lv.groundY - bh, bw, 2, PAL.towerRoof);
-      // Тень по правой грани даёт объём одной полосой.
-      p(bx + bw - 2, lv.groundY - bh + 2, 2, bh - 2, PAL.towerRoof);
+      p.round(bx - 0.6, lv.groundY - bh, bw + 1.2, 2, 0.8, PAL.towerRoof);
+      // Мягкая тень по правой грани даёт объём.
+      p.grad(bx + bw - 3, lv.groundY - bh + 2, 3, bh - 2, "rgba(0,0,0,0)", "rgba(30,60,100,.28)");
 
       const cols = Math.max(2, Math.floor((bw - 6) / 6));
       for (let row = 0; row < Math.floor((bh - 6) / 6); row++) {
         for (let col = 0; col < cols; col++) {
           // Псевдослучайно, но от координат: при прокрутке окна не мигают.
           const lit = ((i * 7 + row * 13 + col * 29) % 11) < 3;
-          p(
-            bx + 3 + col * 6, lv.groundY - bh + 5 + row * 6, 3, 3,
+          p.round(
+            bx + 3 + col * 6, lv.groundY - bh + 5 + row * 6, 3, 3, 0.7,
             lit ? PAL.towerWindowLit : PAL.towerWindow,
           );
+          if (lit) p.glow(bx + 4.5 + col * 6, lv.groundY - bh + 6.5 + row * 6, 4, "rgba(245,217,160,.35)");
         }
       }
     }
@@ -191,39 +262,36 @@ export class Renderer {
     // Без неё башни спорили по контрасту с игроком и тянули взгляд на себя.
     p(0, 0, VIEW.w, lv.groundY, PAL.haze);
 
-    // Холмы: ступенчатая пирамида читается как округлый холм.
+    // Холмы куполами. Солнце слева, поэтому светлая половина слева,
+    // тень справа - объём получается без единой ступеньки.
     for (let i = 0; i < 10; i++) {
       const hx = i * 96 - ((w.camera * 0.42) % 96);
       const tall = i % 2 === 0;
-      const hh = tall ? 22 : 14;
-      const hw = tall ? 46 : 30;
-      for (let step = 0; step < hh; step += 2) {
-        // step идёт сверху вниз, поэтому сужение считаем от обратного:
-        // иначе холм получается перевёрнутым.
-        const inset = Math.round((1 - step / hh) * (hw / 2 - 3));
-        const y = lv.groundY - hh + step;
-        const width = hw - inset * 2;
-        p(hx + inset, y, width, 2, PAL.hill);
-        // Солнце слева: светлая грань по левому склону, тень по правому.
-        p(hx + inset, y, Math.max(2, Math.round(width / 3)), 2, PAL.hillLite);
-        p(hx + inset + width - 3, y, 3, 2, PAL.hillDark);
-      }
-      p(hx + hw / 2 - 4, lv.groundY - hh + 6, 3, 2, PAL.hillDark);
-      p(hx + hw / 2 + 2, lv.groundY - hh + 9, 3, 2, PAL.hillDark);
+      const hh = tall ? 24 : 15;
+      const hw = tall ? 48 : 32;
+      const cxh = hx + hw / 2;
+      p.oval(cxh, lv.groundY, hw / 2, hh, PAL.hillDark);
+      p.oval(cxh - hw * 0.09, lv.groundY, hw / 2.3, hh * 0.94, PAL.hill);
+      p.oval(cxh - hw * 0.19, lv.groundY, hw / 3.6, hh * 0.78, PAL.hillLite);
     }
 
-    // Кусты вдоль земли - тот же силуэт, что у облаков, только зелёный.
-    // Размер и шаг пляшут от индекса: ровный ряд одинаковых кустов выдаёт
-    // повтор сильнее, чем любая другая деталь фона.
+    // Кусты вдоль земли - те же круги внахлёст, что и облака, только
+    // зелёные. Размер и шаг пляшут от индекса: ровный ряд одинаковых кустов
+    // выдаёт повтор сильнее, чем любая другая деталь фона.
     for (let b = 0; b < 14; b++) {
       const bx = b * 61 + ((b * 23) % 17) - ((w.camera * 0.7) % 61);
       const big = b % 3 === 0;
-      const bw = big ? 20 : 13;
-      p(bx + 3, lv.groundY - (big ? 5 : 4), bw - 6, big ? 5 : 4, PAL.bush);
-      p(bx, lv.groundY - 3, bw, 3, PAL.bush);
-      if (big) p(bx + 7, lv.groundY - 8, 7, 4, PAL.bush);
-      p(bx, lv.groundY - 1, bw, 1, PAL.hillDark);
+      const k = big ? 1 : 0.7;
+      p.oval(bx + 4 * k, lv.groundY - 1, 4.4 * k, 3.4 * k, PAL.bush);
+      p.oval(bx + 10 * k, lv.groundY - 1, 5.2 * k, 4.4 * k, PAL.bush);
+      p.oval(bx + 16 * k, lv.groundY - 1, 4 * k, 3 * k, PAL.bush);
+      p.oval(bx + 9 * k, lv.groundY - 3 * k, 3.4 * k, 2.4 * k, PAL.hillLite);
     }
+
+    // Заливка ниже земли идёт ПОСЛЕДНЕЙ. Холмы и кусты рисуются овалами,
+    // и их нижние половины уходят под линию земли: если закрасить низ
+    // раньше, зелёные купола проступают сквозь пол.
+    p(0, lv.groundY, VIEW.w, VIEW.h - lv.groundY, PAL.groundEdge);
   }
 
   private world(w: World): void {
@@ -234,61 +302,45 @@ export class Renderer {
 
     for (const pl of lv.platforms) {
       const solid = pl.h > 6;
-      p(pl.x, pl.y, pl.w, pl.h, solid ? this.tone(w, "ground") : this.tone(w, "brick"));
-      p(pl.x, pl.y, pl.w, 2, solid ? this.tone(w, "groundLite") : this.tone(w, "brickLite"));
-      p(pl.x, pl.y + 2, pl.w, 1, solid ? this.tone(w, "groundDark") : this.tone(w, "brickDark"));
 
       if (!solid) {
-        // Балка была плоской плашкой. Торцы и заклёпки дают ей толщину, а
-        // тень по низу отрывает её от фона - иначе она читается наклейкой.
-        const bd = this.tone(w, "brickDark");
-        p(pl.x, pl.y, 1, pl.h, bd);
-        p(pl.x + pl.w - 1, pl.y, 1, pl.h, bd);
-        p(pl.x, pl.y + pl.h - 1, pl.w, 1, this.tone(w, "brickEdge"));
-        for (let bx = pl.x + 3; bx < pl.x + pl.w - 3; bx += 8) {
-          p(bx, pl.y + 1, 1, 1, this.tone(w, "brickTop"));
-          p(bx, pl.y + pl.h - 2, 1, 1, bd);
+        // Балка: градиент по высоте, скруглённые торцы и мягкая тень снизу.
+        // Раньше это была плоская плашка из трёх полосок.
+        p.grad(pl.x, pl.y, pl.w, pl.h, this.tone(w, "brickLite"), this.tone(w, "brick"), 1.4);
+        p.round(pl.x + 0.5, pl.y + 0.4, pl.w - 1, 1, 0.5, "rgba(255,255,255,.34)");
+        p.round(pl.x, pl.y + pl.h - 1.2, pl.w, 1.2, 0.6, this.tone(w, "brickEdge"));
+        for (let bx = pl.x + 3; bx < pl.x + pl.w - 2; bx += 8) {
+          p.circle(bx, pl.y + pl.h / 2, 0.5, this.tone(w, "brickDark"));
+        }
+        continue;
+      }
+
+      // Земля: сплошной градиент сверху вниз плюс намёк на кладку мягкими
+      // швами. Раньше швы были жёсткими линиями во всю ширину, и земля
+      // читалась дощатым забором.
+      p.grad(pl.x, pl.y, pl.w, pl.h, this.tone(w, "groundLite"), this.tone(w, "ground"));
+      // Дёрн по верхней кромке - самая заметная линия кадра, её и смягчаем.
+      p.round(pl.x, pl.y, pl.w, 2.6, 1.2, this.tone(w, "groundLite"));
+      p.grad(pl.x, pl.y + 2, pl.w, 2.4, this.tone(w, "groundLite"), this.tone(w, "ground"));
+
+      const seam = this.tone(w, "groundDark");
+      const BRICK_W = 14;
+      const BRICK_H = 6.5;
+      for (let row = 0; pl.y + 4 + row * BRICK_H < pl.y + pl.h; row++) {
+        const by = pl.y + 4 + row * BRICK_H;
+        p.round(pl.x, by, pl.w, 0.7, 0.35, seam);
+        // Смещение от абсолютного x: иначе соседние куски пола стыкуются
+        // со сбитым рисунком.
+        const shift = row % 2 === 0 ? 0 : BRICK_W / 2;
+        const first = Math.floor((pl.x - shift) / BRICK_W) * BRICK_W + shift;
+        for (let bx = first; bx < pl.x + pl.w; bx += BRICK_W) {
+          if (bx < pl.x) continue;
+          const h = Math.min(BRICK_H - 0.8, pl.y + pl.h - by - 1);
+          if (h > 0.5) p.round(bx, by + 0.5, 0.7, h, 0.35, seam);
         }
       }
-      if (solid) {
-        // Кладка вразбежку. Раньше швы были сплошными линиями во всю ширину,
-        // и земля читалась дощатым забором. Кирпич кладётся объёмным: светлая
-        // фаска сверху и слева, тёмная снизу и справа - тогда виден рельеф,
-        // а не сетка.
-        const dark = this.tone(w, "groundDark");
-        const lite = this.tone(w, "groundLite");
-        const edge = this.tone(w, "groundEdge");
-        const BRICK_W = 12;
-        const BRICK_H = 6;
-
-        for (let row = 0; pl.y + 3 + row * BRICK_H < pl.y + pl.h; row++) {
-          const by = pl.y + 3 + row * BRICK_H;
-          const h = Math.min(BRICK_H, pl.y + pl.h - by);
-          if (h < 2) break;
-          // Смещение считаем от абсолютного x, а не от края куска: иначе
-          // два соседних куска пола стыкуются со сбитым рисунком.
-          const shift = row % 2 === 0 ? 0 : BRICK_W / 2;
-          const first = Math.floor((pl.x - shift) / BRICK_W) * BRICK_W + shift;
-          for (let bx = first; bx < pl.x + pl.w; bx += BRICK_W) {
-            const x0 = Math.max(bx, pl.x);
-            const x1 = Math.min(bx + BRICK_W - 1, pl.x + pl.w);
-            if (x1 <= x0) continue;
-            p(x0, by, x1 - x0, h - 1, this.tone(w, "ground"));
-            p(x0, by, x1 - x0, 1, lite);
-            if (bx >= pl.x) p(x0, by, 1, h - 1, lite);
-            p(x0, by + h - 1, x1 - x0, 1, dark);
-            if (x1 < pl.x + pl.w) p(x1 - 1, by, 1, h, dark);
-          }
-        }
-
-        // Крапины: без них большая заливка выглядит пластиковой. Считаются
-        // от абсолютного x, поэтому при прокрутке узор стоит на месте.
-        for (let bx = pl.x + 2; bx < pl.x + pl.w - 2; bx += 5) {
-          const n = (bx * 7919) % 29;
-          if (n < 4) p(bx, pl.y + 5 + (n % 3) * 4, 1, 1, edge);
-        }
-        p(pl.x, pl.y + pl.h - 1, pl.w, 1, edge);
-      }
+      // Низ уходит в тень: земля перестаёт быть плоской плашкой.
+      p.grad(pl.x, pl.y + pl.h - 4, pl.w, 4, "rgba(0,0,0,0)", this.tone(w, "groundEdge"));
     }
 
     for (const s of lv.swamps) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
