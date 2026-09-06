@@ -182,6 +182,20 @@ export class Renderer {
 
     for (const item of w.items) {
       if (item.taken) continue;
+      // Мерцающая рамка цветом предмета: на пёстром фоне из кирпича, холмов
+      // и облаков маленькая фигурка теряется, а понять, что именно выпало,
+      // нужно за долю секунды - предмет ещё и убегает.
+      const halo =
+        item.kind === "offer" ? PAL.offerLite
+        : item.kind === "tests" ? PAL.testLite
+        : item.kind === "vacation" ? PAL.vacationLite
+        : PAL.coffeeLite;
+      if (Math.floor(w.ticks / 5) % 2 === 0) {
+        p(item.x - 1, item.y - 1, 12, 1, halo);
+        p(item.x - 1, item.y + 10, 12, 1, halo);
+        p(item.x - 1, item.y, 1, 10, halo);
+        p(item.x + 10, item.y, 1, 10, halo);
+      }
       drawItem(p, item.kind, item.x, item.y);
     }
 

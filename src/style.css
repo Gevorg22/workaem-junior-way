@@ -228,3 +228,14 @@ body[data-standalone="true"] .hint::after {
 .credits a b { color: var(--mint); font-weight: 700; }
 .credits a:hover { color: var(--text); border-bottom-color: var(--line); }
 .credits a:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; border-radius: 2px; }
+
+/*
+ * Активные эффекты в шапке. Без них неуязвимость и ускорение существуют
+ * только в ощущениях: игрок не знает, сколько ещё действует отпуск,
+ * и не понимает, почему вдруг перестал быть неуязвимым.
+ */
+.buffs { display: inline-flex; gap: 10px; }
+.buffs b { font-weight: 700; }
+.buff-vacation { color: #ff9e3c; }
+.buff-coffee { color: #b88450; }
+.buff-tests { color: #4fd8e8; }

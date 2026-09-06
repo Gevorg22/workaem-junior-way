@@ -136,6 +136,28 @@ function inspect(lv: LevelSpec): Problem[] {
     }
   }
 
+  // Лифт не должен задевать землю ни в одной точке своего хода: над землёй
+  // он перекрывает проход - идущий по ней большой игрок упирается головой
+  // и встаёт намертво.
+  for (const m of lv.moving) {
+    const sweep: Rect =
+      m.axis === "x"
+        ? { x: Math.min(m.x, m.x + m.span), y: m.y, w: m.w + Math.abs(m.span), h: 4 }
+        : { x: m.x, y: Math.min(m.y, m.y + m.span), w: m.w, h: 4 + Math.abs(m.span) };
+    for (const g of lv.platforms) {
+      if (g.h <= 6) continue;
+      const overlapX = sweep.x < g.x + g.w && sweep.x + sweep.w > g.x;
+      if (overlapX && sweep.y + sweep.h > g.y - PLAYER_H_BIG) {
+        found.push({
+          kind: "лифт задевает землю",
+          x: Math.round(m.x),
+          detail: `ход до y=${(sweep.y + sweep.h).toFixed(0)}, земля y=${g.y}`,
+        });
+        break;
+      }
+    }
+  }
+
   // Заодно: висящие платформы не должны перекрывать проход по земле.
   for (const p of lv.platforms) {
     if (p.h > 6 || p.x > lv.width - 130) continue;

@@ -56,6 +56,7 @@ const hud = {
   skills: need<HTMLElement>("#hud-skills"),
   score: need<HTMLElement>("#hud-score"),
   lives: need<HTMLElement>("#hud-lives"),
+  buffs: need<HTMLElement>("#hud-buffs"),
 };
 
 const outro = need<HTMLElement>("#outro");
@@ -105,6 +106,15 @@ function syncHud(): void {
   hud.grade.textContent = GRADE_NAMES[world.player.grade] ?? "ДЖУН";
   // Кнопка броска показывается только когда есть чем бросать.
   throwBtn.hidden = world.player.grade < 2;
+
+  // Активные эффекты с обратным отсчётом: иначе неуязвимость и ускорение
+  // существуют только в ощущениях, и непонятно, когда они кончатся.
+  const p = world.player;
+  const parts: string[] = [];
+  if (p.vacation > 0) parts.push(`<b class="buff-vacation">☀ ${Math.ceil(p.vacation / 60)}</b>`);
+  if (p.boost > 0) parts.push(`<b class="buff-coffee">☕ ${Math.ceil(p.boost / 60)}</b>`);
+  if (p.grade === 2) parts.push('<b class="buff-tests">⚗</b>');
+  hud.buffs.innerHTML = parts.join("");
   hud.skills.textContent = String(world.skills);
   hud.score.textContent = String(world.score);
   hud.lives.textContent = world.lives > 0 ? "♥".repeat(world.lives) : "-";
