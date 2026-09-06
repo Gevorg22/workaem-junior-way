@@ -14,7 +14,7 @@
 import { LEVELS } from "../src/game/levels";
 import { World } from "../src/game/world";
 import type { InputState } from "../src/game/world";
-import { TUNING as T } from "../src/game/tuning";
+import { TICKS_PER_SECOND, TUNING as T } from "../src/game/tuning";
 
 interface Policy {
   name: string;
@@ -215,7 +215,7 @@ for (const [index, spec] of LEVELS.entries()) {
     `${index + 1}. ${spec.name.padEnd(11)}` +
       `${bestRun.cleared ? "ПРОЙДЕН" : "НЕ ПРОЙДЕН"}  ` +
       `${String(Math.round(bestRun.best)).padStart(4)}/${spec.width} (${String(pct).padStart(3)}%)  ` +
-      `${String((bestRun.frames / 60).toFixed(0)).padStart(3)} с  ` +
+      `${String((bestRun.frames / TICKS_PER_SECOND).toFixed(0)).padStart(3)} с  ` +
       `${winner ? `стратегия: ${winner}` : "не справилась ни одна"}`,
   );
 }

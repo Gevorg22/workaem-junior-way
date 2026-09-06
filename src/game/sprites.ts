@@ -48,6 +48,14 @@ function drawSmallDev(p: Painter, x: number, y: number, pose: DevPose): void {
   p(laptopX, y + 6, 3, 2, PAL.laptop);
 }
 
+/**
+ * Выросший разработчик. Ровно PLAYER_H_BIG (22) пикселя от y до y + 22:
+ * рост спрайта обязан совпадать с хитбоксом. Раньше он был 15 пикселей при
+ * хитбоксе 22 - ноги хитбокса стояли на земле, а нарисованный человек
+ * заканчивался на семь пикселей выше и выглядел парящим над полом.
+ *
+ * Раскладка по строкам: 2 макушка, 3 волосы, 5 лицо, 8 корпус, 4 ноги.
+ */
 export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
   const { face, walking, airborne, stride, grade } = pose;
 
@@ -58,41 +66,44 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
 
   if (grade === 2) {
     // Наушники - самый быстрый способ показать сеньора одним силуэтом.
-    p(x - 1, y, 2, 5, PAL.headphones);
-    p(x + 8, y, 2, 5, PAL.headphones);
     p(x, y - 2, 9, 2, PAL.headphones);
+    p(x - 1, y - 1, 2, 7, PAL.headphones);
+    p(x + 8, y - 1, 2, 7, PAL.headphones);
   }
 
+  // Голова
   p(x + 1, y, 7, 2, PAL.hair);
-  p(x, y + 1, 9, 3, PAL.hair);
-  p(x + 1, y + 3, 7, 4, PAL.skin);
-  p(x + (face > 0 ? 5 : 2), y + 4, 1, 2, PAL.eye);
-  p(x + 1, y + 3, 2, 1, PAL.hair);
+  p(x, y + 2, 9, 3, PAL.hair);
+  p(x + 1, y + 5, 7, 5, PAL.skin);
+  p(x + 1, y + 5, 2, 2, PAL.hair);
+  p(x + (face > 0 ? 5 : 2), y + 6, 1, 2, PAL.eye);
 
-  p(x, y + 7, 9, 5, grade === 2 ? PAL.pants : PAL.shirt);
-  p(x, y + 7, 9, 1, grade === 2 ? "#4A6ACC" : PAL.shirtLite);
-  p(x + (face > 0 ? 0 : 6), y + 8, 3, 3, PAL.shirtDark);
+  // Корпус
+  p(x, y + 10, 9, 8, grade === 2 ? PAL.pants : PAL.shirt);
+  p(x, y + 10, 9, 1, grade === 2 ? "#4A6ACC" : PAL.shirtLite);
+  p(x + (face > 0 ? 0 : 6), y + 12, 3, 4, PAL.shirtDark);
 
+  // Ноги. Нижняя строка обуви всегда y + 21, то есть ровно подошва хитбокса.
   if (airborne) {
-    p(x + 1, y + 12, 3, 3, PAL.pants);
-    p(x + 5, y + 12, 3, 2, PAL.pants);
-    p(x + 1, y + 14, 3, 1, PAL.shoe);
-    p(x + 5, y + 13, 3, 1, PAL.shoe);
+    p(x + 1, y + 18, 3, 4, PAL.pants);
+    p(x + 5, y + 18, 3, 3, PAL.pants);
+    p(x + 1, y + 21, 3, 1, PAL.shoe);
+    p(x + 5, y + 20, 3, 1, PAL.shoe);
   } else if (walking && stride) {
-    p(x, y + 12, 3, 3, PAL.pants);
-    p(x + 6, y + 12, 3, 2, PAL.pants);
-    p(x, y + 14, 4, 1, PAL.shoe);
-    p(x + 6, y + 13, 3, 1, PAL.shoe);
+    p(x, y + 18, 3, 4, PAL.pants);
+    p(x + 6, y + 18, 3, 3, PAL.pants);
+    p(x, y + 21, 4, 1, PAL.shoe);
+    p(x + 6, y + 20, 3, 1, PAL.shoe);
   } else {
-    p(x + 1, y + 12, 3, 3, PAL.pants);
-    p(x + 5, y + 12, 3, 3, PAL.pants);
-    p(x, y + 14, 4, 1, PAL.shoe);
-    p(x + 5, y + 14, 4, 1, PAL.shoe);
+    p(x + 1, y + 18, 3, 4, PAL.pants);
+    p(x + 5, y + 18, 3, 4, PAL.pants);
+    p(x, y + 21, 4, 1, PAL.shoe);
+    p(x + 5, y + 21, 4, 1, PAL.shoe);
   }
 
   const laptopX = face > 0 ? x + 8 : x - 3;
-  p(laptopX, y + 8, 3, 3, PAL.laptop);
-  p(laptopX, y + 8, 3, 1, PAL.door);
+  p(laptopX, y + 12, 3, 3, PAL.laptop);
+  p(laptopX, y + 12, 3, 1, PAL.door);
 }
 
 export function drawFoe(p: Painter, kind: FoeKind, x: number, y: number, legFrame = false): void {

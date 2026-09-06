@@ -428,6 +428,40 @@ export const ARENA: Segment = {
   blocks: [[36, 45, "question", "coffee"], [246, 45, "question", "tests"]],
 };
 
+/**
+ * Насколько кусок тяжёлый. Считается из содержимого, а не проставляется руками:
+ * сегментов больше сорока, и любая ручная оценка разъедется при первой правке.
+ *
+ * Ямы весят по ширине - перепрыгнуть тридцать пикселей и семьдесят это разные
+ * задачи. Враги весят по виду: легаси топчется, баг быстрее, созвон вообще не
+ * растаптывается. Ящики и скиллы не считаются - это награда, а не преграда.
+ */
+export function segmentDifficulty(seg: Segment): number {
+  let score = 0;
+
+  // Ямы: разрывы между кусками пола.
+  const floor = [...seg.ground].sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < floor.length; i++) {
+    const prev = floor[i - 1]!;
+    const gap = floor[i]![0] - (prev[0] + prev[1]);
+    if (gap > 0) score += gap / 8;
+  }
+  // Дыра в конце куска - тоже яма.
+  const last = floor[floor.length - 1];
+  if (last && last[0] + last[1] < seg.width) score += (seg.width - last[0] - last[1]) / 8;
+
+  for (const f of seg.foes ?? []) {
+    score += f.kind === "call" ? 3.5 : f.kind === "bug" ? 2.5 : 1.5;
+  }
+  for (const h of seg.hazards ?? []) score += 1.5 + h[1] / 40;
+  for (const sw of seg.swamps ?? []) score += 2 + sw[1] / 50;
+  score += (seg.moving?.length ?? 0) * 2;
+  score += (seg.pipes?.length ?? 0) * 0.5;
+
+  // Длинный кусок при прочих равных тяжелее - дольше без передышки.
+  return score * (0.8 + seg.width / 500);
+}
+
 export const TEACHING: Segment[] = [
   {
     // 1. Пусто. Просто идти. Игрок привыкает к управлению, ничем не рискуя.

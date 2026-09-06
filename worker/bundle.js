@@ -42,10 +42,10 @@ async function verifyInitData(initData, botToken, maxAgeSeconds = 86400) {
 }
 
 // worker/anticheat.js
-var TOTAL_LEVEL_WIDTH = 12350;
+var TOTAL_LEVEL_WIDTH = 36088;
 var MAX_SPEED = 2.15;
-var TOTAL_GEMS = 214;
-var TOTAL_LEVELS = 4;
+var TOTAL_GEMS = 679;
+var TOTAL_LEVELS = 12;
 var MIN_FRAMES = Math.floor(TOTAL_LEVEL_WIDTH / MAX_SPEED);
 function checkRun(stats) {
   if (!stats || typeof stats !== "object") return { ok: false, reason: "\u043D\u0435\u0442 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438" };

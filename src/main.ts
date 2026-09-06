@@ -2,7 +2,7 @@ import "./style.css";
 import { LEVELS } from "./game/levels";
 import { PAL } from "./game/palette";
 import { Renderer } from "./game/render";
-import { TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
+import { TICKS_PER_SECOND, TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
 import { GRADE_NAMES } from "./game/types";
 import { World } from "./game/world";
 import type { WorldEvent } from "./game/world";
@@ -187,7 +187,8 @@ replayBtn.addEventListener("click", () => {
 
 let lastPhase = world.phase;
 
-function frame(): void {
+/** Один шаг физики. Вызывается строго TICKS_PER_SECOND раз в секунду. */
+function step(): void {
   const state = input.sample();
 
   if (world.phase === "play") {
@@ -203,6 +204,42 @@ function frame(): void {
     if (lastPhase === "final" || lastPhase === "over") hideOutro();
     lastPhase = world.phase;
   }
+}
+
+const STEP_MS = 1000 / TICKS_PER_SECOND;
+/**
+ * Сколько шагов подряд разрешено догонять за один кадр. Без потолка слабая
+ * машина копит долг, каждый кадр считает всё больше шагов и проваливается
+ * в спираль, из которой уже не выбирается.
+ */
+const MAX_CATCHUP = 5;
+
+let accumulator = 0;
+let prevTime = 0;
+
+/**
+ * Кадр экрана. Физика идёт своим ровным шагом, отрисовка - своим: на 60 Гц
+ * и на 144 Гц игра одинаковая, разница только в плавности картинки.
+ */
+function frame(now: number): void {
+  if (prevTime === 0) prevTime = now;
+  let elapsed = now - prevTime;
+  prevTime = now;
+
+  // Вкладку свернули или телефон уснул: время шло, а игра стояла. Без обрезки
+  // накопятся сотни шагов, и персонаж рванёт через полкарты за один кадр.
+  if (elapsed > 250) elapsed = STEP_MS;
+  accumulator += elapsed;
+
+  let steps = 0;
+  while (accumulator >= STEP_MS && steps < MAX_CATCHUP) {
+    accumulator -= STEP_MS;
+    steps += 1;
+    step();
+  }
+  // Упёрлись в потолок - значит машина не тянет. Лучше идти чуть медленнее,
+  // чем накапливать долг, который всё равно никогда не отдать.
+  if (steps === MAX_CATCHUP) accumulator = 0;
 
   syncHud();
   renderer.draw(world);
@@ -224,6 +261,6 @@ window.addEventListener("resize", () => {
 });
 if (!isTelegram()) document.body.dataset["standalone"] = "true";
 console.info(
-  `Путь джуна · уровней: ${LEVELS.length} · среда: ${isTelegram() ? "Telegram Mini App" : "браузер"}`,
+  `Путь джуна · уровней: ${LEVELS.length} · темп: ${TICKS_PER_SECOND} шагов/с · среда: ${isTelegram() ? "Telegram Mini App" : "браузер"}`,
 );
 requestAnimationFrame(frame);

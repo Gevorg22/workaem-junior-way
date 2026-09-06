@@ -1,4 +1,6 @@
-import { ARENA, GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, SWAMP_Y, TEACHING } from "./segments";
+import {
+  ARENA, GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, segmentDifficulty, SWAMP_Y, TEACHING,
+} from "./segments";
 import { PLAYER_W } from "./tuning";
 import type { Segment } from "./segments";
 import type { BlockSpec, Boss, FoeSpec, LevelSpec, MovingSpec, Pipe, Rect, Theme, Vec } from "./types";
@@ -66,10 +68,37 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     }
   }
 
+  // Сложность внутри уровня растёт от начала к концу: первые куски дают
+  // разбежаться, последние перед дверью - самые злые. Без этого уровень
+  // ощущается ровным, и к середине становится скучно.
+  const ranked = pool.map((s) => ({ seg: s, hard: segmentDifficulty(s) }));
+  const easiest = Math.min(...ranked.map((r) => r.hard));
+  const hardest = Math.max(...ranked.map((r) => r.hard));
+
   while (!bp.handmade && width < bp.targetWidth) {
     // Два подряд одинаковых куска читаются как копипаста - избегаем.
-    const options = pool.filter((s) => s.id !== lastId);
-    const next = options[Math.floor(pick() * options.length)] ?? pool[0]!;
+    const options = ranked.filter((r) => r.seg.id !== lastId);
+    const progress = Math.min(1, width / bp.targetWidth);
+    // Каждый четвёртый кусок - передышка. Монотонный подъём выматывает:
+    // после трёх злых кусков нужен ровный, где можно просто пробежать
+    // и подобрать кофе. Заодно это единственный способ для лёгких кусков
+    // вроде кофейного попасть во вторую половину уровня.
+    const breather = chain.length % 4 === 3;
+    // К концу целимся не в самый тяжёлый кусок, а в 85% диапазона: иначе
+    // финал упирается в одни и те же два-три самых злых куска.
+    const want = breather
+      ? easiest + (hardest - easiest) * 0.1
+      : easiest + (hardest - easiest) * (0.1 + progress * 0.75);
+
+    // Берём не строго ближайший, а случайный из трети ближайших: уровень
+    // должен усложняться, но не превращаться в предсказуемую лестницу.
+    const near = [...options].sort(
+      (a, b) => Math.abs(a.hard - want) - Math.abs(b.hard - want),
+    );
+    const bandSize = Math.max(3, Math.ceil(near.length / 3));
+    const band = near.slice(0, bandSize);
+    const next = (band[Math.floor(pick() * band.length)] ?? near[0])?.seg ?? pool[0]!;
+
     chain.push(next);
     width += next.width;
     lastId = next.id;

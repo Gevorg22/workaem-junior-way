@@ -10,10 +10,12 @@
  */
 
 /** Суммарная длина всех карт и максимальная скорость - из levels.ts и tuning.ts. */
-const TOTAL_LEVEL_WIDTH = 12350;
+// Числа ниже обязаны совпадать с игрой, иначе честный игрок, прошедший все
+// уровни, будет отвергнут как накрутчик. Пересчитать: npm run anticheat
+const TOTAL_LEVEL_WIDTH = 36088;
 const MAX_SPEED = 1.8;
-const TOTAL_GEMS = 214;
-const TOTAL_LEVELS = 4;
+const TOTAL_GEMS = 679;
+const TOTAL_LEVELS = 12;
 
 /** Даже идеальный проход не быстрее, чем длина карт делить на максимальную скорость. */
 const MIN_FRAMES = Math.floor(TOTAL_LEVEL_WIDTH / MAX_SPEED);
