@@ -9,7 +9,7 @@ import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
 import { currentUser, haptic, isTelegram, notify, setupViewport } from "./platform/telegram";
 import { reportRun, resetReport } from "./platform/report";
-import { isMuted, play, toggleMute, unlock } from "./platform/audio";
+import { isMuted, play, playMusic, stopMusic, toggleMute, unlock } from "./platform/audio";
 
 const WORKAEM = "https://www.workaem.com";
 
@@ -245,6 +245,12 @@ function frame(now: number): void {
   // Упёрлись в потолок - значит машина не тянет. Лучше идти чуть медленнее,
   // чем накапливать долг, который всё равно никогда не отдать.
   if (steps === MAX_CATCHUP) accumulator = 0;
+
+  // Тема включается по состоянию игры и молчит на экранах между уровнями:
+  // там читают счёт, а не слушают. playMusic сам ничего не делает, если та
+  // же тема уже играет, поэтому звать каждый кадр безопасно.
+  if (world.phase === "play") playMusic(world.level.theme === "underground" ? "underground" : "surface");
+  else stopMusic();
 
   syncHud();
   renderer.draw(world);

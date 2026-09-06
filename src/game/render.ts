@@ -106,7 +106,6 @@ export class Renderer {
 
   draw(w: World): void {
     const ctx = this.ctx;
-    const p = this.paint;
     const k = T.scale * RENDER.density;
     ctx.setTransform(k, 0, 0, k, 0, 0);
 
@@ -120,26 +119,116 @@ export class Renderer {
     ctx.restore();
 
     if (w.phase === "clear") {
-      this.banner(
-        `ГРЕЙД ПОЛУЧЕН · ${w.level.grade}`,
-        w.levelIndex + 1 < LEVELS.length ? "дальше" : "финал",
-        PAL.door,
-      );
+      const last = w.levelIndex + 1 >= LEVELS.length;
+      this.card(w, {
+        title: last ? "ПОСЛЕДНИЙ РУБЕЖ" : "ГРЕЙД ПОЛУЧЕН",
+        accent: PAL.door,
+        big: w.level.grade,
+        rows: [
+          `скиллов ${w.skills}`,
+          `очков ${w.score}`,
+          `жизней ${w.lives}`,
+        ],
+        hint: last ? "финальный собес - жми" : "дальше",
+      });
     } else if (w.phase === "over") {
-      this.banner("ВЫГОРАНИЕ", "начать заново", PAL.shirt);
+      this.card(w, {
+        title: "ВЫГОРАНИЕ",
+        accent: PAL.shirt,
+        big: `${w.stats.levelsCleared} из ${LEVELS.length}`,
+        rows: [
+          `очков ${w.score}`,
+          `скиллов ${w.skills}`,
+          `смертей ${w.stats.deaths}`,
+        ],
+        hint: "начать заново",
+      });
     } else if (w.phase === "final") {
-      p(0, 0, VIEW.w, VIEW.h, "rgba(15,13,24,.92)");
-      this.centered("ОФФЕР ПОЛУЧЕН", 26, PAL.gem, 15, true);
-      this.centered(`Лид Frontend · скиллов ${w.skills} · очков ${w.score}`, 42, PAL.door, 8);
-      this.centered("340 вакансий на твой уровень - workaem.com", 56, PAL.text, 7);
-      this.centered("сыграть ещё раз", 68, PAL.dim, 7);
+      this.card(w, {
+        title: "ОФФЕР ПОЛУЧЕН",
+        accent: PAL.gem,
+        big: "ЛИД",
+        rows: [
+          `скиллов ${w.skills} · очков ${w.score}`,
+          `растоптано ${w.stats.stomps} · смертей ${w.stats.deaths}`,
+        ],
+        hint: "вакансии на твой грейд - workaem.com",
+        celebrate: true,
+      });
     }
   }
 
-  private banner(title: string, sub: string, color: string): void {
-    this.paint(0, 0, VIEW.w, VIEW.h, "rgba(15,13,24,.86)");
-    this.centered(title, VIEW.h / 2 - 4, color, 14, true);
-    this.centered(sub, VIEW.h / 2 + 10, PAL.text, 7);
+  /**
+   * Экран между уровнями. Раньше это была надпись поверх затемнения, и
+   * пройденный уровень выглядел так же, как проигрыш. Теперь карточка со
+   * счётом и полосой пройденного: видно, сколько позади и сколько осталось.
+   */
+  private card(
+    w: World,
+    o: {
+      title: string;
+      accent: string;
+      big: string;
+      rows: string[];
+      hint: string;
+      celebrate?: boolean;
+    },
+  ): void {
+    const p = this.paint;
+    p(0, 0, VIEW.w, VIEW.h, "rgba(12,10,20,.82)");
+
+    const cw = Math.min(VIEW.w - 12, 194);
+    const ch = 94;
+    const cx = (VIEW.w - cw) / 2;
+    const cy = (VIEW.h - ch) / 2;
+
+    // Свечение под карточкой отделяет её от сцены даже на светлом фоне.
+    p.glow(VIEW.w / 2, VIEW.h / 2, cw * 0.62, "rgba(0,0,0,.5)");
+    p.round(cx - 1, cy - 1, cw + 2, ch + 2, 5, o.accent);
+    p.grad(cx, cy, cw, ch, "#241E38", "#15111F", 4.5);
+    p.round(cx, cy, cw, 1.6, 0.8, "rgba(255,255,255,.10)");
+
+    this.centered(o.title, cy + 15, o.accent, 9, true);
+    this.centered(o.big, cy + 33, PAL.text, 15, true);
+
+    let ry = cy + 46;
+    for (const row of o.rows) {
+      this.centered(row, ry, PAL.dim, 6.5);
+      ry += 9;
+    }
+
+    // Полоса пройденного: по точке на уровень, пройденные горят.
+    const dots = LEVELS.length;
+    const step = Math.min(9, (cw - 24) / dots);
+    const bw = step * dots;
+    const by = cy + ch - 17;
+    const done = w.phase === "final" ? dots : w.levelIndex + (w.phase === "clear" ? 1 : 0);
+    for (let i = 0; i < dots; i++) {
+      const dx = (VIEW.w - bw) / 2 + i * step + step / 2;
+      p.circle(dx, by, i < done ? 2 : 1.4, i < done ? o.accent : "rgba(255,255,255,.18)");
+    }
+
+    // Подпись финала длиннее прочих - её кегль подбираем под ширину карточки,
+    // иначе адрес сайта упирался в рамку.
+    this.ctx.font = "6.5px 'JetBrains Mono', monospace";
+    const hintW = this.ctx.measureText(o.hint).width;
+    const hintSize = hintW > cw - 12 ? 6.5 * ((cw - 12) / hintW) : 6.5;
+    this.centered(o.hint, cy + ch - 5, o.celebrate ? PAL.door : PAL.dim, hintSize);
+
+    if (o.celebrate) {
+      // Салют по краям карточки - победа должна выглядеть победой.
+      const t = w.ticks;
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + t / 90;
+        const r = cw * 0.62 + Math.sin(t / 12 + i) * 5;
+        p.circle(
+          VIEW.w / 2 + Math.cos(a) * r,
+          VIEW.h / 2 + Math.sin(a) * r * 0.52,
+          1 + (i % 3) * 0.5,
+          i % 3 === 0 ? PAL.gem : i % 3 === 1 ? PAL.door : PAL.gemLite,
+        );
+      }
+    }
   }
 
   /**
