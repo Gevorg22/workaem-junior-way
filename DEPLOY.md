@@ -63,60 +63,90 @@ Caddy не сможет выпустить сертификат.
 
 ---
 
-## Шаг 3. Caddy
+## Шаг 3. Caddy (он в Docker)
 
-Caddy сам выпускает и продлевает сертификат Let's Encrypt — именно поэтому
-он здесь удобен: Telegram без валидного HTTPS Mini App не примет.
+Caddy на этой ВМ работает **не системным сервисом, а контейнером**
+`deploy-caddy-1` из docker-compose. Отсюда два следствия:
 
-Добавить в Caddyfile:
+- `systemctl reload caddy` не сработает — сервиса нет
+- контейнер не видит хостовые каталоги, пока их не пробросить томом
 
-```caddy
-game.workaem.com {
-    root * /var/www/junior-way
-    file_server
-    encode gzip zstd
+Поэтому правки нужны в двух файлах.
 
-    # Ассеты собираются с хешем в имени — их можно кешировать навсегда
-    @assets path /assets/*
-    header @assets Cache-Control "public, max-age=31536000, immutable"
-
-    # index.html не кешируем, иначе игроки застрянут на старой версии
-    @html path /
-    header @html Cache-Control "no-cache"
-
-    # Telegram открывает Mini App во встроенном webview
-    header X-Content-Type-Options "nosniff"
-    header Referrer-Policy "strict-origin-when-cross-origin"
-}
-```
-
-Создать каталог и применить:
+### 3.1. Каталог под статику
 
 ```bash
-sudo mkdir -p /var/www/junior-way
-sudo chown -R $USER:$USER /var/www/junior-way
-
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+ssh workaem@111.88.152.219
+mkdir -p /home/workaem/deploy/junior-way
 ```
 
----
+Создать заранее обязательно: если каталога нет на момент старта,
+Docker создаст его сам и владельцем будет root — rsync потом не запишет.
+
+### 3.2. Том в docker-compose.yml
+
+В `/home/workaem/deploy/docker-compose.yml`, в секцию `volumes` сервиса
+`caddy`, добавить одну строку:
+
+```yaml
+      - ./junior-way:/srv/junior-way:ro
+```
+
+Должно получиться так:
+
+```yaml
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./junior-way:/srv/junior-way:ro
+      - caddy_data:/data
+      - caddy_config:/config
+```
+
+### 3.3. Блок домена в Caddyfile
+
+В конец `/home/workaem/deploy/Caddyfile` дописать содержимое файла
+`deploy/Caddyfile.game` из этого репозитория.
+
+Подстановка `{$GAME_DOMAIN:game.workaem.com}` сделана с дефолтом
+намеренно — по той же причине, что у `ROOT_DOMAIN`: переменной нет
+в `.env`, и без дефолта Caddy прочитал бы пустой адрес и не поднялся.
+
+### 3.4. Применить
+
+```bash
+cd /home/workaem/deploy
+docker compose config -q && echo "compose валиден"
+docker compose up -d caddy
+```
+
+⚠️ Именно `up -d`, а **не** `restart`: перезапуск не подхватывает
+изменения томов, контейнер нужно пересоздать.
+
+Проверить, что Caddy поднялся и не ругается:
+
+```bash
+docker compose logs --tail=40 caddy
+```
+
+Строчки про сертификат для `game.workaem.com` появятся в течение минуты
+после того, как DNS начнёт резолвиться.
 
 ## Шаг 4. Выложить
 
 С локальной машины:
 
 ```bash
-DEPLOY_HOST=user@server DEPLOY_PATH=/var/www/junior-way npm run deploy
+cd ~/Desktop/react-apps/workaem-junior-way
+DEPLOY_HOST=workaem@111.88.152.219 \
+DEPLOY_PATH=/home/workaem/deploy/junior-way \
+npm run deploy
 ```
 
-Или вручную:
+Или короче — эти значения уже стоят в скрипте по умолчанию:
 
 ```bash
-rsync -az --delete dist/ user@server:/var/www/junior-way/
+npm run deploy
 ```
-
----
 
 ## Шаг 5. Проверить, что живо
 
@@ -242,7 +272,8 @@ npm run deploy
 |---|---|---|
 | Сертификат не выпускается | DNS ещё не разошёлся | `dig +short game.workaem.com` должен вернуть 111.88.152.219 |
 | Сертификат не выпускается | Порт 80 закрыт | Caddy проверяет домен по HTTP: `sudo ufw allow 80,443/tcp` |
-| `404` на всё | Неверный `root` в Caddyfile | Проверить путь и права на каталог |
+| `404` на всё | Том не проброшен | Проверить строку `./junior-way:/srv/junior-way:ro` и что был `up -d`, а не `restart` |
+| `403` на всё | Каталог создан от root | `sudo chown -R workaem:workaem /home/workaem/deploy/junior-way` |
 | Белый экран в Telegram | Ошибка JS | Открыть тот же URL в браузере, посмотреть консоль |
 | Игра старая после выкладки | Кеш `index.html` | Проверить заголовок `Cache-Control: no-cache` |
 | Нет имени игрока | Открыто не через Telegram | Заходить по ссылке `t.me/бот/game` |

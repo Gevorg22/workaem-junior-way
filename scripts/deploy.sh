@@ -3,14 +3,8 @@
 #   DEPLOY_HOST=user@server DEPLOY_PATH=/var/www/junior-way npm run deploy
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:-}"
-PATH_ON_SERVER="${DEPLOY_PATH:-/var/www/junior-way}"
-
-if [ -z "$HOST" ]; then
-  echo "Не задан DEPLOY_HOST." >&2
-  echo "Пример: DEPLOY_HOST=user@server npm run deploy" >&2
-  exit 1
-fi
+HOST="${DEPLOY_HOST:-workaem@111.88.152.219}"
+PATH_ON_SERVER="${DEPLOY_PATH:-/home/workaem/deploy/junior-way}"
 
 echo "Сборка..."
 npm run build
