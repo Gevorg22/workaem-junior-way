@@ -152,15 +152,6 @@ export class Renderer {
     return w.level.theme === "underground" ? UNDERGROUND[key] : PAL[key];
   }
 
-  /**
-   * Смешивает два цвета. Нужен для неба: держать в палитре полтора десятка
-   * оттенков одного градиента бессмысленно, их проще посчитать.
-   */
-  private static mix(a: string, b: string, t: number): string {
-    const hex = (c: string, i: number): number => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16);
-    const ch = (i: number): number => Math.round(hex(a, i) + (hex(b, i) - hex(a, i)) * t);
-    return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
-  }
 
   private background(w: World): void {
     const p = this.paint;
@@ -170,13 +161,10 @@ export class Renderer {
     if (lv.theme === "underground") {
       p(0, 0, VIEW.w, 18, this.tone(w, "skyHigh"));
     } else {
-      // Небо полосами от глубокого верха к светлому горизонту. Раньше полос
-      // было две, и стык между ними резал кадр пополам заметной линией.
-      const bands = 14;
-      const bandH = Math.ceil(lv.groundY / bands);
-      for (let i = 0; i < bands; i++) {
-        p(0, i * bandH, VIEW.w, bandH, Renderer.mix(PAL.skyTop, PAL.skyHorizon, i / (bands - 1)));
-      }
+      // Небо одним градиентом от глубокого верха к светлому горизонту.
+      // Сначала оно было двумя плашками со стыком посреди кадра, потом
+      // четырнадцатью полосами - на светлом небе полосы всё равно видны.
+      p.grad(0, 0, VIEW.w, lv.groundY + 2, PAL.skyTop, PAL.skyHorizon);
     }
 
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
@@ -379,10 +367,7 @@ export class Renderer {
         : item.kind === "vacation" ? PAL.vacationLite
         : PAL.coffeeLite;
       if (Math.floor(w.ticks / 5) % 2 === 0) {
-        p(item.x - 1, item.y - 1, 12, 1, halo);
-        p(item.x - 1, item.y + 10, 12, 1, halo);
-        p(item.x - 1, item.y, 1, 10, halo);
-        p(item.x + 10, item.y, 1, 10, halo);
+        p.glow(item.x + 5, item.y + 5, 9, halo);
       }
       drawItem(p, item.kind, item.x, item.y);
     }
@@ -407,7 +392,12 @@ export class Renderer {
     }
     for (const q of w.questions) drawQuestion(p, Math.round(q.x), Math.round(q.y), Math.floor(w.ticks / 6) % 2 === 0);
 
-    for (const q of w.particles) p(q.x, q.y, 2, 2, q.color);
+    // Частицы кругами и с угасанием: квадратики 2x2 читались как мусор
+    // на экране, а не как искры.
+    for (const q of w.particles) {
+      const k = Math.min(1, q.life / 22);
+      p.circle(q.x + 1, q.y + 1, 0.5 + k * 1.1, q.color);
+    }
 
     if (w.phase === "play" || w.phase === "clear") this.player(w);
     // Пока едем по трубе, она рисуется поверх - игрок скрывается в жерле.
@@ -431,16 +421,13 @@ export class Renderer {
     if (!airborne && walking) y += Math.floor(w.ticks / 6) % 2;
 
     if (pl.boost > 0 && (pl.boost > 90 || Math.floor(w.ticks / 4) % 2 === 0)) {
-      this.paint(x - (pl.face > 0 ? 4 : -9), y + 9, 4, 2, PAL.coffee);
+      this.paint.oval(x - (pl.face > 0 ? 2 : -11), y + 12, 2.6, 1.1, PAL.coffee);
     }
 
     // Отпуск виден по мерцающему ореолу - иначе неуязвимость незаметна.
     if (pl.vacation > 0 && (pl.vacation > 120 || Math.floor(w.ticks / 4) % 2 === 0)) {
       const glow = Math.floor(w.ticks / 3) % 2 ? PAL.vacationLite : PAL.gemLite;
-      this.paint(x - 1, y - 1, pl.w + 2, 1, glow);
-      this.paint(x - 1, y + pl.h, pl.w + 2, 1, glow);
-      this.paint(x - 1, y, 1, pl.h, glow);
-      this.paint(x + pl.w, y, 1, pl.h, glow);
+      this.paint.glow(x + pl.w / 2, y + pl.h / 2, pl.h * 0.9, glow);
     }
     drawDev(this.paint, x, y, {
       face: pl.face,
@@ -455,9 +442,17 @@ export class Renderer {
     const ctx = this.ctx;
     const p = this.paint;
     const wx = Math.round(w.deadlineX ?? 0);
-    p(wx - 60, 0, 60, VIEW.h, "rgba(208,48,74,.16)");
-    p(wx - 3, 0, 3, VIEW.h, PAL.deadline);
-    for (let s = 0; s < VIEW.h; s += 6) p(wx, s + (Math.floor(w.ticks / 3) % 6), 4, 3, PAL.deadline);
+    // Зарево перед стеной нарастает к самой стене, а не лежит ровной плашкой.
+    const glow = this.ctx.createLinearGradient(wx - 70, 0, wx, 0);
+    glow.addColorStop(0, "rgba(208,48,74,0)");
+    glow.addColorStop(1, "rgba(208,48,74,.30)");
+    this.ctx.fillStyle = glow;
+    this.ctx.fillRect(wx - 70, 0, 70, VIEW.h);
+    p.round(wx - 3, 0, 3.2, VIEW.h, 1.2, PAL.deadline);
+    const drift = Math.floor(w.ticks / 3) % 7;
+    for (let s = -7; s < VIEW.h; s += 7) {
+      p.oval(wx + 1.6, s + drift, 1.8, 2.2, PAL.deadline);
+    }
 
     ctx.save();
     ctx.translate(wx - 8, VIEW.h / 2);
