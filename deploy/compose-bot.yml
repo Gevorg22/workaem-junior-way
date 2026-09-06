@@ -1,0 +1,12 @@
+# ── Добавить сервис в /home/workaem/deploy/docker-compose.yml ──
+# рядом с остальными, на том же уровне отступа
+
+  bot:
+    build: ./junior-way-bot
+    restart: unless-stopped
+    # BOT_TOKEN и WEBHOOK_SECRET берутся из .env - в репозитории их нет
+    env_file: .env
+    environment:
+      GAME_URL: https://game.workaem.com
+    expose:
+      - "8080"
