@@ -66,10 +66,10 @@ function syncHud(): void {
   hud.grade.textContent = world.level.grade;
   hud.skills.textContent = String(world.skills);
   hud.score.textContent = String(world.score);
-  hud.lives.textContent = world.lives > 0 ? "♥".repeat(world.lives) : "—";
+  hud.lives.textContent = world.lives > 0 ? "♥".repeat(world.lives) : "-";
 }
 
-/** Финальный экран — единственное место, где игра отдаёт человека продукту. */
+/** Финальный экран - единственное место, где игра отдаёт человека продукту. */
 function showOutro(): void {
   const user = currentUser();
   const who = user ? `${user.name}, ты` : "Ты";
@@ -106,7 +106,7 @@ function frame(): void {
     world.update(state);
   } else {
     world.update({ left: false, right: false, jump: false, jumpPressed: false });
-    // На экранах между уровнями любое нажатие ведёт дальше, кроме финала —
+    // На экранах между уровнями любое нажатие ведёт дальше, кроме финала -
     // там человек должен успеть увидеть ссылку на вакансии.
     if (state.confirm && world.phase !== "final") world.advance();
   }

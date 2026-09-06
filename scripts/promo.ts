@@ -1,6 +1,6 @@
 /**
  * Картинка 640×360 для витрины Mini App в BotFather.
- * Рисуется теми же спрайтами, что и игра — отдельного арта не заводим.
+ * Рисуется теми же спрайтами, что и игра - отдельного арта не заводим.
  * PNG кодируется вручную, чтобы не тащить зависимость ради одной картинки.
  */
 import { deflateSync } from "node:zlib";
@@ -180,4 +180,4 @@ const png = Buffer.concat([
 ]);
 
 writeFileSync("public/promo-640x360.png", png);
-console.log(`public/promo-640x360.png — ${W}×${H}, ${(png.length / 1024).toFixed(1)} КБ`);
+console.log(`public/promo-640x360.png - ${W}×${H}, ${(png.length / 1024).toFixed(1)} КБ`);

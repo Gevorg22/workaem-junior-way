@@ -3,7 +3,7 @@ import type { FoeKind } from "./types";
 
 /**
  * Спрайты рисуются прямоугольниками через Painter, а не через готовые картинки.
- * Так их можно переиспользовать где угодно — в игре, в превью каталога,
+ * Так их можно переиспользовать где угодно - в игре, в превью каталога,
  * в картинке для кнопки «поделиться результатом».
  */
 export type Painter = (x: number, y: number, w: number, h: number, color: string) => void;
@@ -126,7 +126,7 @@ export function drawDoor(p: Painter, x: number, y: number, open: boolean): void 
   p(x + 11, y + 13, 2, 2, PAL.gem);
 }
 
-/** Чекпоинт — коммит. Пройденный загорается мятным, непройденный серый. */
+/** Чекпоинт - коммит. Пройденный загорается мятным, непройденный серый. */
 export function drawCheckpoint(p: Painter, x: number, y: number, reached: boolean): void {
   const pole = reached ? PAL.door : PAL.legacyDark;
   const flag = reached ? PAL.door : PAL.doorShut;

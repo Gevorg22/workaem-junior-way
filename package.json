@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Путь джуна — Telegram Mini App платформер про карьеру в IT",
+  "description": "Путь джуна - Telegram Mini App платформер про карьеру в IT",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && npm run check && vite build",

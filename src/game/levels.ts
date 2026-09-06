@@ -4,7 +4,7 @@ import type { FoeSpec, LevelSpec, Rect, Vec } from "./types";
 
 /**
  * Детерминированный генератор: один и тот же сид даёт одну и ту же карту.
- * Для таблицы рекордов это обязательно — иначе игроки соревнуются
+ * Для таблицы рекордов это обязательно - иначе игроки соревнуются
  * на разных уровнях сложности и рейтинг ничего не значит.
  */
 function rng(seed: number): () => number {
@@ -22,7 +22,7 @@ interface Blueprint {
   grade: string;
   maxSpeed: number;
   tint: string;
-  /** Целевая длина. Реальная получится чуть больше — сегменты не режутся. */
+  /** Целевая длина. Реальная получится чуть больше - сегменты не режутся. */
   targetWidth: number;
   seed: number;
   deadlineSpeed: number;
@@ -42,7 +42,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   let lastId = INTRO.id;
 
   while (width < bp.targetWidth) {
-    // Два подряд одинаковых куска читаются как копипаста — избегаем.
+    // Два подряд одинаковых куска читаются как копипаста - избегаем.
     const options = pool.filter((s) => s.id !== lastId);
     const next = options[Math.floor(pick() * options.length)] ?? pool[0]!;
     chain.push(next);
@@ -83,7 +83,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     for (const [x, w] of seg.hazards ?? []) hazards.push({ x: offset + x, y: HAZARD_Y, w, h: 6 });
     for (const [x, w] of seg.swamps ?? []) swamps.push({ x: offset + x, y: SWAMP_Y, w, h: 4 });
 
-    // Коммит ставим на стыке — там всегда земля, значит возрождение безопасно.
+    // Коммит ставим на стыке - там всегда земля, значит возрождение безопасно.
     const isInner = index > 0 && index < chain.length - 1;
     if (isInner && index % bp.checkpointEvery === 0) {
       checkpoints.push({ x: offset + 6, y: GROUND_Y });

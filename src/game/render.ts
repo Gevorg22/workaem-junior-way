@@ -65,7 +65,7 @@ export class Renderer {
       p(0, 0, T.viewW, T.viewH, "rgba(15,13,24,.92)");
       this.centered("ОФФЕР ПОЛУЧЕН", 26, PAL.gem, 15, true);
       this.centered(`Лид Frontend · скиллов ${w.skills} · очков ${w.score}`, 42, PAL.door, 8);
-      this.centered("340 вакансий на твой уровень — workaem.com", 56, PAL.text, 7);
+      this.centered("340 вакансий на твой уровень - workaem.com", 56, PAL.text, 7);
       this.centered("сыграть ещё раз", 68, PAL.dim, 7);
     }
   }

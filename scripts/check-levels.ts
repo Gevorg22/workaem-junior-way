@@ -13,7 +13,7 @@ function jumpBox(maxSpeed: number): { reach: number; rise: number } {
 
 /**
  * Жадный обход: идём слева направо и тянем достижимую границу.
- * Висящая платформа над ямой — такая же опора, как земля,
+ * Висящая платформа над ямой - такая же опора, как земля,
  * поэтому считаем все поверхности, а не только пол.
  */
 function findBlocker(lv: LevelSpec): { x: number; gap: number } | null {

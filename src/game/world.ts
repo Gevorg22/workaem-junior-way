@@ -17,7 +17,7 @@ export interface InputState {
   left: boolean;
   right: boolean;
   jump: boolean;
-  /** true только в кадр нажатия — из него набивается буфер прыжка. */
+  /** true только в кадр нажатия - из него набивается буфер прыжка. */
   jumpPressed: boolean;
 }
 
@@ -36,9 +36,9 @@ export class World {
   coffee: Pickup[] = [];
   foes: Foe[] = [];
   particles: Particle[] = [];
-  /** Позиция стены дедлайна, null — стены на уровне нет. */
+  /** Позиция стены дедлайна, null - стены на уровне нет. */
   deadlineX: number | null = null;
-  /** X последнего пройденного коммита — сюда возрождаемся. */
+  /** X последнего пройденного коммита - сюда возрождаемся. */
   checkpointX = 10;
 
   lives = T.startLives;
@@ -202,7 +202,7 @@ export class World {
       p.buffer = 0;
       this.stats.jumps += 1;
     }
-    // Прыжок по длительности нажатия: отпустил — подъём срезается.
+    // Прыжок по длительности нажатия: отпустил - подъём срезается.
     if (!input.jump && p.vy < T.jumpCut) p.vy = T.jumpCut;
 
     p.vy = Math.min(p.vy + T.gravity, T.maxFall);

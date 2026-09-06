@@ -115,7 +115,7 @@ body[data-standalone="true"] .hint::after {
   content: " · вне Telegram: стрелки и пробел";
 }
 
-/* Финальный экран — здесь игра отдаёт человека продукту */
+/* Финальный экран - здесь игра отдаёт человека продукту */
 #outro {
   position: absolute;
   inset: 0;
