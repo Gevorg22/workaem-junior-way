@@ -10,7 +10,12 @@
  * напрямую, минуя свой API. Через воркер идут только ответы бота.
  */
 
+import { verifyInitData } from "./telegram.js";
+import { checkRun, gradeFor } from "./anticheat.js";
+
 const SITE = "https://www.workaem.com";
+/** Игра живёт на другом домене, поэтому запросы к воркеру - кросс-доменные. */
+const ALLOWED_ORIGIN = "https://game.workaem.com";
 
 /** UTM проставляем на каждой ссылке: без них не отличить трафик из бота. */
 const link = (path, medium) =>
@@ -156,12 +161,97 @@ async function handleUpdate(update, env) {
   await send(env, chatId, "Такой команды нет. Держи кнопку:", startKeyboard(gameUrl));
 }
 
+
+/** Сообщение после финала: не реклама, а уместное предложение в нужный момент. */
+function resultMessage(user, stats) {
+  const grade = gradeFor(stats.levelsCleared);
+  const name = user.first_name ? `${user.first_name}, ты` : "Ты";
+  const lines = [
+    `${name} дошёл до грейда *${grade}*.`,
+    "",
+    `Скиллов собрано: ${stats.skills}`,
+    `Очков: ${stats.score}`,
+  ];
+  if (stats.deaths > 0) lines.push(`Смертей: ${stats.deaths}`);
+  lines.push("", "В жизни грейд растёт медленнее, но вакансии есть уже сейчас:");
+  return lines.join("\n");
+}
+
+function resultKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "Вакансии на мой уровень", url: link("/jobs", "bot_result") }],
+      [{ text: "Проверить себя на собеседовании", url: link("/questions", "bot_result") }],
+    ],
+  };
+}
+
+function cors(extra = {}) {
+  return {
+    "access-control-allow-origin": ALLOWED_ORIGIN,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    ...extra,
+  };
+}
+
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: cors({ "content-type": "application/json" }),
+  });
+
+async function handleResult(request, env) {
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return json({ ok: false, error: "bad json" }, 400);
+  }
+
+  const auth = await verifyInitData(payload.initData, env.BOT_TOKEN);
+  if (!auth.ok) {
+    console.warn(`результат отклонён: ${auth.reason}`);
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const check = checkRun(payload.stats);
+  if (!check.ok) {
+    console.warn(`невозможный забег от ${auth.user.id}: ${check.reason}`);
+    return json({ ok: false, error: "invalid run" }, 422);
+  }
+
+  // В личном чате chat_id совпадает с id пользователя.
+  const res = await call(env, "sendMessage", {
+    chat_id: auth.user.id,
+    text: resultMessage(auth.user, payload.stats),
+    reply_markup: resultKeyboard(),
+    parse_mode: "Markdown",
+    link_preview_options: { is_disabled: true },
+  });
+
+  // Если человек открыл игру по прямой ссылке и ни разу не нажимал /start,
+  // Telegram запрещает боту писать первым. Это не ошибка игры - молча пропускаем.
+  if (!res.ok) console.log(`не доставлено ${auth.user.id}: ${res.description}`);
+
+  return json({ ok: true, delivered: Boolean(res.ok) });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
       return new Response("ok", { headers: { "content-type": "text/plain" } });
+    }
+
+    if (request.method === "OPTIONS" && url.pathname === "/result") {
+      return new Response(null, { status: 204, headers: cors() });
+    }
+
+    if (request.method === "POST" && url.pathname === "/result") {
+      return handleResult(request, env);
     }
 
     if (request.method !== "POST" || url.pathname !== "/webhook") {

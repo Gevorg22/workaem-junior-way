@@ -7,6 +7,7 @@ import { World } from "./game/world";
 import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
 import { currentUser, haptic, isTelegram, notify, setupViewport } from "./platform/telegram";
+import { reportRun, resetReport } from "./platform/report";
 
 const WORKAEM = "https://www.workaem.com";
 
@@ -84,6 +85,10 @@ function showOutro(): void {
   shareLink.href = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
 
   outro.hidden = false;
+
+  // Бот пришлёт результат в чат - там же, где кнопка на вакансии.
+  // Сознательно без await: экран не должен ждать сеть.
+  void reportRun(world.stats);
 }
 
 function hideOutro(): void {
@@ -92,6 +97,7 @@ function hideOutro(): void {
 
 replayBtn.addEventListener("click", () => {
   hideOutro();
+  resetReport();
   world.newRun();
   syncHud();
   canvas.focus();
