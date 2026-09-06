@@ -1,0 +1,175 @@
+:root {
+  --ground: #14121f;
+  --surface: #1e1b2e;
+  --surface-2: #272238;
+  --line: #3a3252;
+  --coral: #ff6b4a;
+  --mint: #4fe0c0;
+  --gold: #ffc857;
+  --text: #ede9f5;
+  --dim: #6b6485;
+
+  --px: "Pixelify Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--mono);
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+.frame {
+  width: 100%;
+  max-width: 880px;
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+  position: relative;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-bottom: 2px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.stats { display: flex; gap: 14px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.stats b { font-weight: 700; }
+#hud-grade { color: var(--mint); }
+#hud-skills { color: var(--gold); }
+#hud-score { color: var(--text); }
+#hud-lives { color: var(--coral); letter-spacing: 2px; }
+
+#stage {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  background: #0f0d18;
+  touch-action: none;
+}
+#stage:focus-visible { outline: 3px solid var(--mint); outline-offset: -3px; }
+
+.pad {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 2px solid var(--line);
+  background: var(--surface-2);
+}
+.pad-side { display: flex; gap: 8px; }
+
+.pad button {
+  font-family: var(--px);
+  font-size: 20px;
+  min-width: 68px;
+  min-height: 48px;
+  color: var(--text);
+  background: var(--ground);
+  border: 2px solid var(--line);
+  border-bottom-width: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+.pad button:active { border-bottom-width: 2px; transform: translateY(2px); background: var(--line); }
+.pad button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+.hint {
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+  max-width: 880px;
+  line-height: 1.5;
+}
+body[data-standalone="true"] .hint::after {
+  content: " · вне Telegram: стрелки и пробел";
+}
+
+/* Финальный экран — здесь игра отдаёт человека продукту */
+#outro {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 13, 24, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+}
+#outro[hidden] { display: none; }
+
+#outro h2 {
+  font-family: var(--px);
+  font-size: clamp(18px, 4vw, 26px);
+  color: var(--gold);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+#outro-grade { font-size: 13px; color: var(--mint); }
+#outro-stats { font-size: 12px; color: var(--dim); }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+
+.actions a, .actions button {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 11px 18px;
+  border-radius: 4px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.actions .primary { background: var(--mint); border-color: var(--mint); color: #0f0d18; font-weight: 700; }
+.actions a:focus-visible, .actions button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Бренд в шапке: реклама работает с первой секунды, а не только на финале */
+.brand {
+  font-family: var(--px);
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  color: var(--mint);
+  text-decoration: none;
+  text-transform: none;
+  flex: 0 0 auto;
+}
+.brand:hover { color: var(--gold); }
+.brand:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }

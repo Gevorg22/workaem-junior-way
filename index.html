@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14121F" />
+    <title>Путь джуна</title>
+    <meta name="description" content="Аркада про карьеру в IT: растопчи легаси, обойди созвоны, дойди до оффера. Игра от workaem.com" />
+    <meta property="og:title" content="Путь джуна" />
+    <meta property="og:description" content="Аркада про карьеру в IT от workaem.com" />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="frame">
+        <div class="bar">
+          <a class="brand" href="https://www.workaem.com?utm_source=game&utm_medium=header&utm_campaign=junior-way"
+             target="_blank" rel="noopener">workaem</a>
+          <span id="hud-level">Уровень 1 · Галера</span>
+          <span class="stats">
+            <span>ГРЕЙД <b id="hud-grade">ДЖУН</b></span>
+            <span>СКИЛЛЫ <b id="hud-skills">0</b></span>
+            <span>ОЧКИ <b id="hud-score">0</b></span>
+            <span>ЖИЗНИ <b id="hud-lives">♥♥♥</b></span>
+          </span>
+        </div>
+
+        <canvas id="stage" tabindex="0" aria-label="Путь джуна — платформер про карьеру в IT"></canvas>
+
+        <div class="pad">
+          <div class="pad-side">
+            <button type="button" id="btn-left" aria-label="Влево">◀</button>
+            <button type="button" id="btn-right" aria-label="Вправо">▶</button>
+          </div>
+          <div class="pad-side">
+            <button type="button" id="btn-jump" aria-label="Прыжок">▲</button>
+          </div>
+        </div>
+
+        <div id="outro" hidden>
+          <h2>Оффер получен</h2>
+          <p id="outro-grade">Ты дошёл до грейда ЛИД</p>
+          <p id="outro-stats"></p>
+          <div class="actions">
+            <a id="jobs-link" class="primary" href="https://www.workaem.com" target="_blank" rel="noopener">
+              Вакансии на твой грейд
+            </a>
+            <a id="share-link" href="https://t.me" target="_blank" rel="noopener">Поделиться</a>
+            <button type="button" id="replay">Ещё раз</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="hint">Растопчи легаси сверху · созвон не растаптывается · держи прыжок дольше — прыгнешь выше</p>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
