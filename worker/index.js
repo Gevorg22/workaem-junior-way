@@ -22,13 +22,14 @@ const link = (path, medium) =>
   `${SITE}${path}?utm_source=game&utm_medium=${medium}&utm_campaign=junior-way`;
 
 const GREETING = [
-  "Ты джун. Впереди галера, аутсорс, продукт и оффер.",
+  "Ты стажёр. Впереди галера, аутсорс, серверная, легаси и оффер.",
   "",
-  "Растаптывай легаси сверху, обходи созвоны - их прыжком не решить,",
-  "не проваливайся в прод и собирай скиллы.",
+  "Платформер в стиле классических Марио, только про IT: растаптывай",
+  "легаси сверху, обходи созвоны - их прыжком не решить, не проваливайся",
+  "в прод и собирай скиллы.",
   "",
-  "Четыре уровня - четыре грейда. С каждым игра ускоряется:",
-  "сеньор просто работает быстрее.",
+  "*Двенадцать уровней* - от стажёра до оффера. С каждым игра ускоряется:",
+  "сеньор просто работает быстрее. В конце ждёт финальный собес.",
 ].join("\n");
 
 /**
@@ -48,12 +49,34 @@ const ABOUT = [
 ].join("\n");
 
 const HELP = [
-  "Стрелки внизу экрана - идти, треугольник - прыжок. Держишь дольше - прыгаешь выше.",
+  "*Управление*",
+  "Стрелки внизу - идти, ▲ - прыжок. Держишь дольше - прыгаешь выше.",
+  "▼ - спуститься в трубу. ⚗ - бросить тест, появляется у сеньора.",
+  "С клавиатуры: стрелки или A/D, пробел, стрелка вниз, X.",
   "",
+  "*Правила*",
   "• Прыгни на врага сверху - раздавишь",
-  "• Созвон растоптать нельзя, только обойти",
+  "• Созвон растоптать нельзя, только обойти или закидать тестами",
+  "• Ящик со знаком вопроса бьют снизу, головой",
+  "• Оффер повышает грейд, кофе ускоряет, отпуск даёт неуязвимость",
   "• Флажок - коммит: с него начнёшь после смерти",
-  "• В прод не падай",
+  "• Труба с чёрным жерлом проходная: встань сверху и жми ▼",
+  "• В прод не падай, а от стены дедлайна беги",
+  "",
+  "*Финал*",
+  "На последнем уровне дверь заперта, пока не пройден собес. Он ходит",
+  "за тобой и кидает вопросы - три попадания по голове или тестом.",
+].join("\n");
+
+/** Про автора спрашивают - лучше ответить, чем промолчать. */
+const AUTHOR = [
+  "Игру и *workaem* сделал Геворг Карагозян.",
+  "",
+  "Написано без движка и без фреймворка: своя физика на canvas,",
+  "вся графика рисуется кодом, весь звук синтезируется - ни одного",
+  "файла ассетов. Поэтому игра открывается из чата мгновенно.",
+  "",
+  "Исходники открыты, вопросы и баги - в личку.",
 ].join("\n");
 
 /** Кнопка web_app открывает Mini App прямо в чате, не уводя в браузер. */
@@ -64,6 +87,21 @@ function startKeyboard(gameUrl) {
     inline_keyboard: [
       playRow(gameUrl),
       [{ text: "Вакансии", url: link("/jobs", "bot_start") }],
+      [
+        { text: "Как играть", callback_data: "help" },
+        { text: "Об авторе", callback_data: "author" },
+      ],
+    ],
+  };
+}
+
+function authorKeyboard(gameUrl) {
+  return {
+    inline_keyboard: [
+      [{ text: "Написать автору", url: "https://t.me/Gevorg1989" }],
+      [{ text: "Исходники на GitHub", url: "https://github.com/Gevorg22/workaem-junior-way" }],
+      [{ text: "Открыть workaem", url: link("", "bot_author") }],
+      playRow(gameUrl),
     ],
   };
 }
@@ -121,6 +159,23 @@ function send(env, chatId, text, keyboard) {
 }
 
 async function handleUpdate(update, env) {
+  const gameUrlForCb = env.GAME_URL ?? "https://game.workaem.com";
+
+  // Нажатие на инлайн-кнопку. Без ответа на callback_query Telegram крутит
+  // спиннер на кнопке несколько секунд, и бот выглядит зависшим.
+  const cb = update.callback_query;
+  if (cb) {
+    await call(env, "answerCallbackQuery", { callback_query_id: cb.id });
+    const chat = cb.message?.chat?.id;
+    if (!chat) return;
+    if (cb.data === "help") {
+      await send(env, chat, HELP, { inline_keyboard: [playRow(gameUrlForCb)] });
+    } else if (cb.data === "author") {
+      await send(env, chat, AUTHOR, authorKeyboard(gameUrlForCb));
+    }
+    return;
+  }
+
   const message = update.message;
   if (!message?.text) return;
 
@@ -138,6 +193,11 @@ async function handleUpdate(update, env) {
 
   if (text.startsWith("/about")) {
     await send(env, chatId, ABOUT, aboutKeyboard());
+    return;
+  }
+
+  if (text.startsWith("/author") || text.startsWith("/me")) {
+    await send(env, chatId, AUTHOR, authorKeyboard(gameUrl));
     return;
   }
 
