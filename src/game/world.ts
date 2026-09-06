@@ -369,6 +369,8 @@ export class World {
     }
 
     // Вертикаль
+    const prevTop = p.y;
+    const prevBottom = p.y + p.h;
     p.y += p.vy;
     const wasGround = p.onGround;
     p.onGround = false;
@@ -386,11 +388,20 @@ export class World {
       if (b.broken) continue;
       const box = { x: b.x, y: b.y, w: 12, h: 12 };
       if (!overlap(p, box)) continue;
-      if (p.vy > 0) {
+
+      // Сторону определяем по тому, откуда игрок пришёл, а не по знаку
+      // скорости. В верхней точке прыжка скорость ровно ноль: обе ветки
+      // по знаку промахивались, игрок оставался внутри блока, а следующим
+      // кадром гравитация делала скорость положительной - и его выносило
+      // НАВЕРХ блока, будто он туда запрыгнул.
+      const cameFromAbove = prevBottom <= box.y + 1;
+      const cameFromBelow = prevTop >= box.y + box.h - 1;
+
+      if (cameFromAbove) {
         p.y = box.y - p.h;
         p.vy = 0;
         p.onGround = true;
-      } else if (p.vy < 0) {
+      } else if (cameFromBelow) {
         p.y = box.y + box.h;
         p.vy = 0.4;
         this.hitBlock(b);
