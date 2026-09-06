@@ -12,6 +12,7 @@
  */
 import { drawBoss, drawDev, drawFoe } from "../src/game/sprites";
 import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W } from "../src/game/tuning";
+import { FOE_SIZE } from "../src/game/world";
 
 interface Bounds { top: number; bottom: number; left: number; right: number }
 
@@ -77,10 +78,28 @@ console.log("\nбосс:");
   }
 }
 
-console.log("\nвраги:");
+console.log("\nвраги: спрайт против хитбокса");
 for (const kind of ["legacy", "bug", "call"] as const) {
+  const box = FOE_SIZE[kind];
+  for (const step of [true, false]) {
+    const b = measure((paint) => drawFoe(paint, kind, 0, 0, step));
+    // Низ обязан совпасть точно: враг стоит на своей нижней грани.
+    // Верх может быть ниже нуля у парящих - созвон намеренно не касается
+    // верхней грани, он же висит в воздухе.
+    const soleOk = b.bottom === box.h;
+    const widthOk = b.right - b.left <= box.w;
+    if (!soleOk || !widthOk) {
+      bad++;
+      console.log(
+        `  ✗ ${kind} ${step ? "шаг1" : "шаг2"}: низ на ${b.bottom} при хитбоксе ${box.h}` +
+          (widthOk ? "" : `, ширина ${b.right - b.left} при ${box.w}`),
+      );
+    }
+  }
   const b = measure((paint) => drawFoe(paint, kind, 0, 0, true));
-  console.log(`  ${kind.padEnd(7)} нарисовано ${b.right - b.left}x${b.bottom - b.top}, низ на ${b.bottom}`);
+  if (b.bottom === box.h) {
+    console.log(`  ${kind.padEnd(7)} хитбокс ${box.w}x${box.h}, спрайт до ${b.bottom} - совпадает`);
+  }
 }
 
 console.log(

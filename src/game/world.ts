@@ -6,9 +6,14 @@ import type {
   Projectile, Rect, RunStats,
 } from "./types";
 
-const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
-  legacy: { w: 12, h: 9, speed: 0.3 },
-  bug: { w: 9, h: 7, speed: 0.72 },
+/**
+ * Размеры обязаны совпадать с тем, что рисуют спрайты: иначе враг тонет в
+ * земле или парит над ней. Сторожит check:sprites, он же покажет, если
+ * кто-то поправит рисунок и забудет про хитбокс.
+ */
+export const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
+  legacy: { w: 12, h: 10, speed: 0.3 },
+  bug: { w: 9, h: 8, speed: 0.72 },
   call: { w: 13, h: 10, speed: 0.42 },
 };
 
