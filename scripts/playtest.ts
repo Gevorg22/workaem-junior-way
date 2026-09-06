@@ -14,7 +14,7 @@
 import { LEVELS } from "../src/game/levels";
 import { World } from "../src/game/world";
 import type { InputState } from "../src/game/world";
-import { TICKS_PER_SECOND, TUNING as T } from "../src/game/tuning";
+import { PLAYER_H_BIG, TICKS_PER_SECOND, TUNING as T } from "../src/game/tuning";
 
 interface Policy {
   name: string;
@@ -85,12 +85,21 @@ function groundUnder(w: World, x: number, feet: number): boolean {
   );
 }
 
-function attempt(index: number, policy: Policy, seed?: number) {
+function attempt(index: number, policy: Policy, seed?: number, big = false) {
   const rnd = seed === undefined ? null : seeded(seed);
   const w = new World();
   w.loadLevel(index);
   w.phase = "play";
   w.lives = 99;
+  // Проход большим - отдельная задача, а не тот же самый с запасом прочности.
+  // Выросший игрок вдвое выше и не пролезает там, где маленький проходит не
+  // заметив. Именно так в прод уехала колонна ящиков с просветом 21 пиксель
+  // при росте 22: бот всегда бегал маленьким и ни разу в неё не упёрся.
+  if (big) {
+    w.player.grade = 1;
+    w.player.h = PLAYER_H_BIG;
+    w.player.y = w.level.groundY - PLAYER_H_BIG - 1;
+  }
 
   let hold = 0;
   let best = 0;
@@ -157,15 +166,25 @@ function attempt(index: number, policy: Policy, seed?: number) {
     const input: InputState = { left: goLeft, right: goRight, jump, jumpPressed: jump };
     w.update(input);
 
+    // Смерть обнуляет грейд, и большой прогон незаметно превращался бы
+    // в обычный - ровно в том месте, которое и надо проверить.
+    if (big && w.phase === "play" && w.player.grade === 0) {
+      const feet = w.player.y + w.player.h;
+      w.player.grade = 1;
+      w.player.h = PLAYER_H_BIG;
+      w.player.y = feet - PLAYER_H_BIG;
+    }
+
     if (w.phase === "clear") return { cleared: true, best: w.player.x, frames };
     if (w.phase === "over") break;
 
-    if (process.env.TRACE && index === Number(process.env.TRACE) && frames % 4 === 0) {
+    if (process.env.TRACE && index === Number(process.env.TRACE) && frames % 4 === 0
+        && (!process.env.TRACE_BIG || big)) {
       const q = w.player;
       const lo = Number(process.env.TRACE_FROM ?? 0);
       const hi = Number(process.env.TRACE_TO ?? 1e9);
       if (q.x >= lo && q.x <= hi) {
-        console.log(`   f${frames} x=${q.x.toFixed(0)} feet=${(q.y + q.h).toFixed(0)} vy=${q.vy.toFixed(1)} ${q.onGround ? "земля" : "воздух"} hold=${hold} hurt=${q.hurt} | босс ${w.boss ? `x=${w.boss.x.toFixed(0)} y=${w.boss.y.toFixed(0)} hp=${w.boss.hp} inv=${w.boss.hit}` : "повержен"} вопросов=${w.questions.length}`);
+        console.log(`   ${big ? "БОЛЬШОЙ" : "малый  "} f${frames} x=${q.x.toFixed(0)} feet=${(q.y + q.h).toFixed(0)} vy=${q.vy.toFixed(1)} ${q.onGround ? "земля" : "воздух"} hold=${hold} hurt=${q.hurt} | босс ${w.boss ? `x=${w.boss.x.toFixed(0)} y=${w.boss.y.toFixed(0)} hp=${w.boss.hp} inv=${w.boss.hit}` : "повержен"} вопросов=${w.questions.length}`);
       }
     }
     if (w.player.x > best + 0.5) { best = w.player.x; stuck = 0; }
@@ -200,6 +219,33 @@ for (const [index, spec] of LEVELS.entries()) {
     }
   }
 
+  // Тот же уровень большим. Это не «то же самое с запасом» - выросший игрок
+  // вдвое выше и упирается там, где маленький проходит не заметив.
+  let bigRun = { cleared: false, best: 0, frames: 0 };
+  let bigWinner = "";
+  if (bestRun.cleared) {
+    for (const policy of POLICIES) {
+      const run = attempt(index, policy, undefined, true);
+      if (run.cleared) { bigRun = run; bigWinner = policy.name; break; }
+      if (run.best > bigRun.best) bigRun = run;
+    }
+    if (!bigRun.cleared) {
+      const search = POLICIES[1]!;
+      for (let seed = 1; seed <= SEARCH_SEEDS; seed++) {
+        const run = attempt(index, search, seed * 7919 + index, true);
+        if (run.cleared) { bigRun = run; bigWinner = `перебор, зерно ${seed}`; break; }
+        if (run.best > bigRun.best) bigRun = run;
+      }
+    }
+    if (!bigRun.cleared) {
+      failed++;
+      console.log(
+        `      БОЛЬШИМ НЕ ПРОЙДЕН: встал на ${Math.round(bigRun.best)}/${spec.width}` +
+          ` - маленький проходит, выросший упирается`,
+      );
+    }
+  }
+
   if (!bestRun.cleared) {
     failed++;
     // Для непройденного уровня печатаем, где встала каждая стратегия:
@@ -213,16 +259,17 @@ for (const [index, spec] of LEVELS.entries()) {
 
   console.log(
     `${index + 1}. ${spec.name.padEnd(11)}` +
-      `${bestRun.cleared ? "ПРОЙДЕН" : "НЕ ПРОЙДЕН"}  ` +
+      `${bestRun.cleared ? (bigRun.cleared ? "ПРОЙДЕН" : "ТОЛЬКО МАЛЫМ") : "НЕ ПРОЙДЕН"}  ` +
       `${String(Math.round(bestRun.best)).padStart(4)}/${spec.width} (${String(pct).padStart(3)}%)  ` +
       `${String((bestRun.frames / TICKS_PER_SECOND).toFixed(0)).padStart(3)} с  ` +
-      `${winner ? `стратегия: ${winner}` : "не справилась ни одна"}`,
+      `${winner ? `малым: ${winner}` : "не справилась ни одна"}` +
+      `${bigWinner ? ` · большим: ${bigWinner}` : ""}`,
   );
 }
 
 console.log(
   failed === 0
-    ? "\nкаждый уровень проходится хотя бы одной стратегией"
+    ? "\nкаждый уровень проходится и маленьким, и выросшим игроком"
     : `\nНЕПРОХОДИМЫХ УРОВНЕЙ: ${failed}`,
 );
 process.exit(failed === 0 ? 0 : 1);
