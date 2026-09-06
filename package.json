@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "esbuild scripts/check-levels.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check.mjs --log-level=error && node node_modules/.cache/check.mjs",
-    "deploy": "bash scripts/deploy.sh",
-    "deploy:bot": "bash scripts/deploy-bot.sh"
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

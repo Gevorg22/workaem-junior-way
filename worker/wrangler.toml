@@ -1,0 +1,11 @@
+name = "workaem-game-bot"
+main = "index.js"
+compatibility_date = "2026-09-06"
+
+# Публичный адрес игры. Секреты (BOT_TOKEN, WEBHOOK_SECRET) сюда не пишем -
+# они задаются через `wrangler secret put` и хранятся у Cloudflare.
+[vars]
+GAME_URL = "https://game.workaem.com"
+
+[observability]
+enabled = true
