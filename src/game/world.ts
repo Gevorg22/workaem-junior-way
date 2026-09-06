@@ -2,7 +2,7 @@ import { levelAt, LEVELS } from "./levels";
 import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
 import type {
-  Block, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Player,
+  Block, Boss, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Pipe, Player,
   Projectile, Rect, RunStats,
 } from "./types";
 
@@ -26,16 +26,39 @@ export interface InputState {
   jump: boolean;
   /** Бросок теста - доступен только сеньору. */
   throw?: boolean;
+  /**
+   * Спуск в трубу - только в кадр нажатия. По удержанию игрок вылезал
+   * из парной трубы, тут же проваливался обратно и катался бесконечно.
+   */
+  downPressed?: boolean;
   /** true только в кадр нажатия - из него набивается буфер прыжка. */
   jumpPressed: boolean;
 }
 
 export type WorldEvent =
   | "stomp" | "hurt" | "pickup" | "coffee"
-  | "checkpoint" | "clear" | "death" | "final" | "jump"
+  | "checkpoint" | "clear" | "death" | "final" | "jump" | "pipe" | "bossHit" | "bossDown"
   | "bump" | "break" | "gradeUp" | "gradeDown" | "throw" | "vacation";
 
+/** Кадры на спуск в трубу и на подъём из парной. */
+const WARP_DIVE = 22;
+
+/** Сколько попаданий держит босс - нужно для разгона по мере урона. */
+const BOSS_HP_MAX = 3;
+
 export class World {
+  /**
+   * Проезд по трубе. Пока он идёт, физика и враги отключены:
+   * игрок просто едет вниз, телепортируется и выезжает вверх.
+   */
+  warp: { t: number; from: Pipe; to: Pipe } | null = null;
+  /**
+   * Копия босса на текущий забег. Спека уровня общая на всё приложение -
+   * если бить босса прямо в ней, после смерти игрока он останется убитым.
+   */
+  boss: Boss | null = null;
+  /** Вопросы, которыми кидается босс. */
+  questions: Projectile[] = [];
   levelIndex = 0;
   level: LevelSpec = levelAt(0);
   phase: Phase = "play";
@@ -63,7 +86,7 @@ export class World {
 
   stats: RunStats = {
     score: 0, skills: 0, levelsCleared: 0, frames: 0,
-    jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0,
+    jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0, pipes: 0,
   };
 
   private listeners = new Set<(e: WorldEvent) => void>();
@@ -88,7 +111,7 @@ export class World {
     this.shake = 0;
     this.stats = {
       score: 0, skills: 0, levelsCleared: 0, frames: 0,
-      jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0,
+      jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0, pipes: 0,
     };
     this.loadLevel(0);
     this.phase = "play";
@@ -126,6 +149,8 @@ export class World {
     this.blocks = lv.blocks.map((b) => ({ ...b, bump: 0, used: false, broken: false }));
     this.items = [];
     this.shots = [];
+    this.boss = lv.boss ? { ...lv.boss } : null;
+    this.questions = [];
     this.moving = lv.moving.map((m) => {
       // Размах может быть отрицательным - лифт, который едет вверх.
       // Границы обязаны быть упорядочены: иначе разворот срабатывает
@@ -205,12 +230,35 @@ export class World {
    * Смена грейда меняет и рост. Ноги при этом должны остаться на месте,
    * иначе выросший игрок проваливается в пол или подпрыгивает.
    */
+  /**
+   * Смена грейда меняет рост. Ноги остаются на месте, а голова уходит вверх -
+   * и упирается в то, чего раньше не касалась. Чаще всего это тот самый ящик,
+   * из которого только что выпал оффер: игрок вырастал прямо в него и кадр
+   * висел внутри стены. Поэтому после роста голову надо освободить.
+   */
   private setGrade(grade: Grade): void {
     const p = this.player;
     const feet = p.y + p.h;
+    const grew = heightFor(grade) > p.h;
     p.grade = grade;
     p.h = heightFor(grade);
     p.y = feet - p.h;
+    if (!grew) return;
+
+    const lv = this.level;
+    const solids: Rect[] = [
+      ...lv.platforms,
+      ...lv.pipes,
+      ...this.moving,
+      ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
+    ];
+    for (let pass = 0; pass < 3; pass++) {
+      const hit = solids.find((o) => overlap(p, o));
+      if (!hit) break;
+      // Опускаемся из-под потолка: место снизу есть - там игрок только что был.
+      p.y = hit.y + hit.h;
+      if (p.vy < 0) p.vy = 0;
+    }
   }
 
   private burst(x: number, y: number, color: string, count: number): void {
@@ -224,6 +272,135 @@ export class World {
       });
     }
   }
+
+  /**
+   * Финальный собес. Он не патрулирует отрезок, как рядовые враги, а идёт
+   * на игрока: иначе бой решался бы стоянием в углу арены. Скорость растёт
+   * с каждым попаданием - последняя треть боя самая злая.
+   */
+  private updateBoss(): void {
+    const b = this.boss;
+    if (!b) return;
+    const p = this.player;
+
+    if (b.dying > 0) {
+      b.dying -= 1;
+      b.y += 0.7;
+      if (b.dying % 6 === 0) this.burst(b.x + b.w / 2, b.y + b.h / 2, PAL.bug, 6);
+      if (b.dying === 0) {
+        this.boss = null;
+        this.questions = [];
+        this.score += T.scoreBoss;
+        this.shake = T.shakeFrames;
+        this.burst(b.x + b.w / 2, b.y + b.h / 2, PAL.gemLite, 26);
+      }
+      return;
+    }
+
+    if (b.hit > 0) b.hit -= 1;
+
+    // Шаг в сторону игрока, но не за пределы арены.
+    const speed = 0.5 + (BOSS_HP_MAX - b.hp) * 0.2;
+    b.dir = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
+    // После своего удара босс отходит. Иначе он вплотную упирается в игрока,
+    // и урон идёт по кругу: отбрасывания не хватает, чтобы разорвать контакт.
+    const step = b.recoil > 0 ? -speed * 1.4 : speed;
+    if (b.recoil > 0) b.recoil -= 1;
+    b.x = Math.max(b.min, Math.min(b.max - b.w, b.x + b.dir * step));
+
+    // Прыжок: приземление трясёт экран, чтобы удар читался.
+    b.hop -= 1;
+    const onFloor = b.y + b.h >= b.baseY - 0.01;
+    if (b.hop <= 0 && onFloor) {
+      b.vy = -3.9;
+      b.hop = 150 - (BOSS_HP_MAX - b.hp) * 30;
+    }
+    b.vy = Math.min(b.vy + T.gravity, T.maxFall);
+    b.y += b.vy;
+    if (b.y + b.h >= b.baseY) {
+      if (b.vy > 1) this.shake = 6;
+      b.y = b.baseY - b.h;
+      b.vy = 0;
+    }
+
+    // Вопрос летит по дуге в сторону игрока - от него можно увернуться
+    // прыжком или присесть за блоком.
+    b.cool -= 1;
+    if (b.cool <= 0) {
+      b.cool = 110 - (BOSS_HP_MAX - b.hp) * 22;
+      const toward = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
+      this.questions.push({
+        x: b.x + (toward > 0 ? b.w : -5),
+        y: b.y + 10,
+        vx: toward * 1.7,
+        vy: -1.6,
+        life: 220,
+      });
+    }
+
+    // Брошенный сеньором тест бьёт босса наравне со стомпом.
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const shot = this.shots[i]!;
+      if (!overlap({ x: shot.x, y: shot.y, w: 4, h: 4 }, b)) continue;
+      this.shots.splice(i, 1);
+      this.hurtBoss(b);
+      if (!this.boss) return;
+    }
+
+    if (p.hurt === 0 && overlap(p, b)) {
+      const fromAbove = p.vy > T.stompMinFallSpeed && p.y + p.h < b.y + b.h * T.stompTolerance;
+      if (fromAbove || p.vacation > 0) {
+        p.vy = T.stompBounce;
+        p.buffer = 0;
+        this.hurtBoss(b);
+      } else if (b.hit === 0) {
+        this.damage(b.x + b.w / 2);
+        b.recoil = 54;
+      }
+    }
+  }
+
+  /** Одно попадание по боссу: минус жизнь, мигание, а на третьем - конец. */
+  private hurtBoss(b: Boss): void {
+    if (b.hit > 0 || b.dying > 0) return;
+    b.hp -= 1;
+    b.hit = 44;
+    this.shake = T.shakeFrames;
+    this.stats.stomps += 1;
+    this.burst(b.x + b.w / 2, b.y + 4, PAL.gemLite, 12);
+    if (b.hp > 0) {
+      this.score += T.scoreStomp;
+      this.emit("bossHit");
+    } else {
+      b.dying = 72;
+      this.questions = [];
+      this.emit("bossDown");
+    }
+  }
+
+  /** Вопросы босса. Летят по дуге и гаснут о землю или край экрана. */
+  private updateQuestions(): void {
+    const p = this.player;
+    for (let i = this.questions.length - 1; i >= 0; i--) {
+      const q = this.questions[i]!;
+      q.x += q.vx;
+      q.vy = Math.min(q.vy + 0.1, 3);
+      q.y += q.vy;
+      q.life -= 1;
+      if (p.hurt === 0 && p.vacation === 0 && overlap(p, { x: q.x, y: q.y, w: 5, h: 6 })) {
+        this.questions.splice(i, 1);
+        this.damage(q.x);
+        continue;
+      }
+      const gone =
+        q.life <= 0 ||
+        q.y > this.level.groundY ||
+        q.x < this.camera - 20 ||
+        q.x > this.camera + VIEW.w + 20;
+      if (gone) this.questions.splice(i, 1);
+    }
+  }
+
 
   /**
    * Урон сначала откатывает грейд и только на джуне отнимает жизнь.
@@ -271,6 +448,21 @@ export class World {
       vacation: 0, cooldown: 0,
     };
     this.shots = [];
+    this.warp = null;
+    // Вопросы босса гаснут вместе с попыткой: иначе возродившийся игрок
+    // получает в лицо снаряд, выпущенный ещё до его смерти.
+    this.questions = [];
+    // Босс отступает к середине арены и добирает половину отнятого:
+    // прогресс не сгорает целиком, но и с одного хп добить не выйдет.
+    if (this.boss && this.boss.dying === 0) {
+      const b = this.boss;
+      b.x = (b.min + b.max) / 2 - b.w / 2;
+      b.y = b.baseY - b.h;
+      b.vy = 0;
+      b.hit = 0;
+      b.recoil = 0;
+      b.hp = Math.min(BOSS_HP_MAX, b.hp + 1);
+    }
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
@@ -293,6 +485,52 @@ export class World {
 
     const p = this.player;
     const lv = this.level;
+
+    // Проезд по трубе идёт мимо всей остальной физики.
+    if (this.warp) {
+      const wp = this.warp;
+      wp.t += 1;
+      p.vx = 0;
+      p.vy = 0;
+      if (wp.t <= WARP_DIVE) {
+        // Ныряем: сползаем внутрь входной трубы.
+        p.x = wp.from.x + wp.from.w / 2 - p.w / 2;
+        p.y = wp.from.y - p.h + (p.h + 3) * (wp.t / WARP_DIVE);
+      } else {
+        // Выезжаем из парной. Первый кадр после ныряния - уже там.
+        const k = Math.min(1, (wp.t - WARP_DIVE) / WARP_DIVE);
+        p.x = wp.to.x + wp.to.w / 2 - p.w / 2;
+        p.y = wp.to.y + 3 - (p.h + 3) * k;
+        if (k >= 1) {
+          p.y = wp.to.y - p.h;
+          p.onGround = true;
+          p.coyote = T.coyoteFrames;
+          this.warp = null;
+        }
+      }
+      const camTarget = p.x - VIEW.w / 2 + p.w / 2;
+      this.camera += (camTarget - this.camera) * T.cameraEase;
+      this.camera = Math.max(0, Math.min(lv.width - VIEW.w, this.camera));
+      return;
+    }
+
+    // Вход в трубу: стоим сверху на парной трубе и жмём вниз.
+    if (input.downPressed && p.onGround) {
+      const from = lv.pipes.find(
+        (pipe) =>
+          pipe.link !== undefined &&
+          Math.abs(p.y + p.h - pipe.y) <= 2 &&
+          p.x + p.w / 2 > pipe.x + 2 &&
+          p.x + p.w / 2 < pipe.x + pipe.w - 2,
+      );
+      const to = from && lv.pipes.find((pipe) => pipe.x === from.link);
+      if (from && to) {
+        this.warp = { t: 0, from, to };
+        this.stats.pipes += 1;
+        this.emit("pipe");
+        return;
+      }
+    }
 
     if (input.jumpPressed) p.buffer = T.bufferFrames;
 
@@ -372,7 +610,13 @@ export class World {
     if (p.x + p.w > lv.width) { p.x = lv.width - p.w; p.vx = 0; }
     for (const pl of solids) {
       if (!overlap(p, pl)) continue;
-      p.x = p.vx > 0 ? pl.x - p.w : pl.x + pl.w;
+      // При нулевой скорости знак не подсказывает сторону: игрока могло
+      // внести лифтом или выталкиванием из соседнего блока. Тогда выходим
+      // в ближайшую сторону, а не вправо наугад.
+      const toLeft = p.x + p.w - pl.x;
+      const toRight = pl.x + pl.w - p.x;
+      const goLeft = p.vx > 0 || (p.vx === 0 && toLeft <= toRight);
+      p.x = goLeft ? pl.x - p.w : pl.x + pl.w;
       p.vx = 0;
     }
 
@@ -392,10 +636,16 @@ export class World {
     // поймать ИМЕННО в момент столкновения. Разрешение столкновения тут же
     // выталкивает игрока из блока, и проверка пересечения после цикла
     // не находит уже ничего - блок оставался целым.
+    // Ящики стоят рядами вплотную. Выталкивание из одного вносит игрока
+    // в соседний, а тот в цикле уже пройден - и игрок остаётся в стене.
+    // Поэтому проходов несколько, пока не перестанет пересекаться хоть с чем-то.
+    for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
     for (const b of this.blocks) {
       if (b.broken) continue;
       const box = { x: b.x, y: b.y, w: 12, h: 12 };
       if (!overlap(p, box)) continue;
+      moved = true;
 
       // Сторону определяем по тому, откуда игрок пришёл, а не по знаку
       // скорости. В верхней точке прыжка скорость ровно ноль: обе ветки
@@ -412,8 +662,25 @@ export class World {
       } else if (cameFromBelow) {
         p.y = box.y + box.h;
         p.vy = 0.4;
-        this.hitBlock(b);
+        // Удар засчитывается только на первом проходе: следующие лишь
+        // расталкивают, иначе один прыжок вскрывал бы весь ряд.
+        if (pass === 0) this.hitBlock(b);
+      } else {
+        // Ни сверху, ни снизу - значит игрока внесло внутрь боком: лифтом
+        // или отскоком от соседнего блока. Оставлять его в ящике нельзя,
+        // выталкиваем по кратчайшей стороне.
+        const outLeft = p.x + p.w - box.x;
+        const outRight = box.x + box.w - p.x;
+        const outUp = p.y + p.h - box.y;
+        const outDown = box.y + box.h - p.y;
+        const min = Math.min(outLeft, outRight, outUp, outDown);
+        if (min === outUp) { p.y = box.y - p.h; p.vy = 0; p.onGround = true; }
+        else if (min === outDown) { p.y = box.y + box.h; p.vy = 0.4; }
+        else if (min === outLeft) { p.x = box.x - p.w; p.vx = 0; }
+        else { p.x = box.x + box.w; p.vx = 0; }
       }
+    }
+    if (!moved) break;
     }
     if (p.onGround || (wasGround && p.coyote === 0)) p.coyote = T.coyoteFrames;
 
@@ -424,7 +691,10 @@ export class World {
     }
 
     if (this.deadlineX !== null) {
-      this.deadlineX += lv.deadlineSpeed;
+      // На арене стена останавливается: бой должен решаться боем,
+      // а не тем, успел ли игрок добежать.
+      if (!this.boss) this.deadlineX += lv.deadlineSpeed;
+      else if (p.x < this.boss.min - VIEW.w) this.deadlineX += lv.deadlineSpeed;
       if (p.x < this.deadlineX + 8) { this.respawn(); return; }
     }
 
@@ -604,11 +874,15 @@ export class World {
       this.emit("checkpoint");
     }
 
+    this.updateBoss();
+    this.updateQuestions();
+
     // Финиш - вертикальная линия, а не коробка. Дверь высотой 24 пикселя
     // от земли, и прилетевший в прыжке игрок оказывался выше неё: уровень
     // не засчитывался, а за дверью оставалось всего 5 пикселей хода до
     // стены, где он и застревал навсегда.
-    if (p.x + p.w > lv.door.x + 8) {
+    // Пока собес не пройден, дверь заперта: иначе босса можно обежать.
+    if (p.x + p.w > lv.door.x + 8 && !this.boss) {
       const door = { x: lv.door.x, y: lv.door.y - 33, w: 18, h: 33 };
       this.score += T.scoreLevelClear + this.lives * T.scoreLifeBonus;
       this.stats.levelsCleared += 1;

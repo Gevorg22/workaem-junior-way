@@ -6,7 +6,7 @@
  * дают ровно ту восьмибитную эстетику, которая тут уместна.
  */
 
-type Sound = "jump" | "stomp" | "coin" | "coffee" | "hurt" | "checkpoint" | "clear" | "over";
+type Sound = "jump" | "stomp" | "coin" | "coffee" | "hurt" | "checkpoint" | "clear" | "over" | "pipe" | "bossHit" | "bossDown";
 
 const STORAGE_KEY = "junior-way:muted";
 
@@ -93,6 +93,25 @@ const PATTERNS: Record<Sound, Note[]> = {
   checkpoint: [
     { freq: 523, at: 0, dur: 0.09 },
     { freq: 784, at: 0.08, dur: 0.16 },
+  ],
+  // Попадание по боссу: короткий резкий скол.
+  bossHit: [
+    { freq: 196, at: 0, dur: 0.07, type: "square" },
+    { freq: 147, at: 0.06, dur: 0.12, type: "square" },
+  ],
+  // Собес пройден: фанфара выше и длиннее обычной победы.
+  bossDown: [
+    { freq: 392, at: 0, dur: 0.1 },
+    { freq: 523, at: 0.1, dur: 0.1 },
+    { freq: 659, at: 0.2, dur: 0.1 },
+    { freq: 784, at: 0.3, dur: 0.1 },
+    { freq: 1047, at: 0.4, dur: 0.3, type: "triangle" },
+  ],
+  // Спуск в трубу: тон падает - на слух понятно, что уезжаешь вниз.
+  pipe: [
+    { freq: 659, at: 0, dur: 0.08 },
+    { freq: 440, at: 0.07, dur: 0.08 },
+    { freq: 294, at: 0.14, dur: 0.16, type: "triangle" },
   ],
   clear: [
     { freq: 523, at: 0, dur: 0.1 },

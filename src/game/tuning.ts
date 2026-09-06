@@ -95,4 +95,5 @@ export const TUNING = {
   scoreLifeBonus: 250,
   scoreTested: 150,
   scoreVacation: 200,
+  scoreBoss: 2000,
 } as const;

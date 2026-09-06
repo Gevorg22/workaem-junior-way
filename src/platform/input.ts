@@ -7,6 +7,7 @@ import type { InputState } from "../game/world";
 export class Input {
   private left = false;
   private right = false;
+  private downEdge = false;
   private jump = false;
   private jumpEdge = false;
   private throwHeld = false;
@@ -18,7 +19,7 @@ export class Input {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(e.code) && document.activeElement === this.target) {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code) && document.activeElement === this.target) {
       e.preventDefault();
     }
     if (e.repeat) return;
@@ -33,6 +34,7 @@ export class Input {
   private set(code: string, value: boolean): void {
     if (code === "ArrowLeft" || code === "KeyA") this.left = value;
     if (code === "ArrowRight" || code === "KeyD") this.right = value;
+    if ((code === "ArrowDown" || code === "KeyS") && value) this.downEdge = true;
     if (code === "KeyX" || code === "ShiftLeft" || code === "ShiftRight") this.throwHeld = value;
     if (code === "Space" || code === "ArrowUp" || code === "KeyW") {
       if (value && !this.jump) this.jumpEdge = true;
@@ -41,7 +43,7 @@ export class Input {
   }
 
   /** Кнопки для телефона: в Telegram играют пальцем, клавиатуры там нет. */
-  bindButton(el: HTMLElement, key: "left" | "right" | "jump" | "throw"): void {
+  bindButton(el: HTMLElement, key: "left" | "right" | "down" | "jump" | "throw"): void {
     const press = (e: Event): void => {
       e.preventDefault();
       if (key === "jump") {
@@ -49,13 +51,14 @@ export class Input {
         this.jump = true;
         this.confirmEdge = true;
       } else if (key === "throw") this.throwHeld = true;
+      else if (key === "down") this.downEdge = true;
       else this[key] = true;
     };
     const release = (e: Event): void => {
       e.preventDefault();
       if (key === "jump") this.jump = false;
       else if (key === "throw") this.throwHeld = false;
-      else this[key] = false;
+      else if (key !== "down") this[key] = false;
     };
     el.addEventListener("pointerdown", press);
     for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
@@ -68,6 +71,7 @@ export class Input {
     const state = {
       left: this.left,
       right: this.right,
+      downPressed: this.downEdge,
       jump: this.jump,
       jumpPressed: this.jumpEdge,
       throw: this.throwHeld,
@@ -75,6 +79,7 @@ export class Input {
     };
     this.jumpEdge = false;
     this.confirmEdge = false;
+    this.downEdge = false;
     return state;
   }
 

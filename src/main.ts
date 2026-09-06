@@ -70,11 +70,21 @@ const soundBtn = need<HTMLButtonElement>("#sound");
 setupViewport(PAL.sky);
 
 const world = new World();
+
+// Отладочный старт с нужного уровня: ?level=12. Только в режиме разработки -
+// в собранной игре параметр игнорируется, иначе им можно было бы пропустить
+// половину пути и попасть в таблицу рекордов почти сразу.
+if (import.meta.env.DEV) {
+  const want = Number(new URLSearchParams(location.search).get("level"));
+  if (Number.isFinite(want) && want >= 1) world.loadLevel(Math.min(want, LEVELS.length) - 1);
+  (window as unknown as { world: World }).world = world;
+}
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
 
 input.bindButton(need<HTMLElement>("#btn-left"), "left");
 input.bindButton(need<HTMLElement>("#btn-right"), "right");
+input.bindButton(need<HTMLElement>("#btn-down"), "down");
 input.bindButton(need<HTMLElement>("#btn-jump"), "jump");
 const throwBtn = need<HTMLButtonElement>("#btn-throw");
 input.bindButton(throwBtn, "throw");
@@ -85,6 +95,9 @@ const FEEDBACK: Partial<Record<WorldEvent, () => void>> = {
   pickup: () => { haptic("light"); play("coin"); },
   coffee: () => { haptic("soft"); play("coffee"); },
   checkpoint: () => { haptic("rigid"); play("checkpoint"); },
+  pipe: () => { haptic("rigid"); play("pipe"); },
+  bossHit: () => { haptic("heavy"); play("bossHit"); },
+  bossDown: () => { notify("success"); play("bossDown"); },
   hurt: () => { notify("error"); play("hurt"); },
   death: () => { notify("error"); play("over"); },
   clear: () => { notify("success"); play("clear"); },
@@ -180,7 +193,7 @@ function frame(): void {
   if (world.phase === "play") {
     world.update(state);
   } else {
-    world.update({ left: false, right: false, jump: false, jumpPressed: false });
+    world.update({ left: false, right: false, downPressed: false, jump: false, jumpPressed: false });
     // На экранах между уровнями любое нажатие ведёт дальше, кроме финала -
     // там человек должен успеть увидеть ссылку на вакансии.
     if (state.confirm && world.phase !== "final") world.advance();

@@ -1,7 +1,7 @@
-import { GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, SWAMP_Y } from "./segments";
+import { ARENA, GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, SWAMP_Y, TEACHING } from "./segments";
 import { PLAYER_W } from "./tuning";
 import type { Segment } from "./segments";
-import type { BlockSpec, FoeSpec, LevelSpec, MovingSpec, Pipe, Rect, Vec } from "./types";
+import type { BlockSpec, Boss, FoeSpec, LevelSpec, MovingSpec, Pipe, Rect, Theme, Vec } from "./types";
 
 /**
  * Детерминированный генератор: один и тот же сид даёт одну и ту же карту.
@@ -20,6 +20,12 @@ function rng(seed: number): () => number {
 
 interface Blueprint {
   name: string;
+  theme?: Theme;
+  /**
+   * Заданная вручную цепочка кусков вместо случайной сборки.
+   * Нужна там, где важен порядок - например, в обучающем уровне.
+   */
+  handmade?: Segment[];
   grade: string;
   maxSpeed: number;
   tint: string;
@@ -29,10 +35,17 @@ interface Blueprint {
   deadlineSpeed: number;
   /** Через сколько сегментов ставить коммит. */
   checkpointEvery: number;
+  /** Финальный собес перед дверью. */
+  boss?: boolean;
 }
 
 const GROUND_H = 15;
 const PLATFORM_H = 4;
+
+/** Босс на голову выше выросшего игрока - разница видна с первого кадра. */
+const BOSS_W = 26;
+const BOSS_H = 30;
+const BOSS_HP = 3;
 
 function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   const pick = rng(bp.seed);
@@ -45,13 +58,28 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   let width = INTRO.width;
   let lastId = INTRO.id;
 
-  while (width < bp.targetWidth) {
+  // Ручная сборка: порядок задан автором и не зависит от сида.
+  if (bp.handmade) {
+    for (const seg of bp.handmade) {
+      chain.push(seg);
+      width += seg.width;
+    }
+  }
+
+  while (!bp.handmade && width < bp.targetWidth) {
     // Два подряд одинаковых куска читаются как копипаста - избегаем.
     const options = pool.filter((s) => s.id !== lastId);
     const next = options[Math.floor(pick() * options.length)] ?? pool[0]!;
     chain.push(next);
     width += next.width;
     lastId = next.id;
+  }
+  // Арена встаёт перед выходом: босс закрывает дорогу к двери.
+  let arenaStart = 0;
+  if (bp.boss) {
+    arenaStart = width;
+    chain.push(ARENA);
+    width += ARENA.width;
   }
   chain.push(OUTRO);
   width += OUTRO.width;
@@ -95,8 +123,21 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     for (const [x, y, w, axis, span, speed] of seg.moving ?? []) {
       moving.push({ x: offset + x, y, w, axis, span, speed });
     }
-    for (const [x, h] of seg.pipes ?? []) {
-      pipes.push({ x: offset + x, y: GROUND_Y - h, w: 18, h });
+    // Помеченные входом соединяются попарно внутри своего сегмента.
+    const segPipes = seg.pipes ?? [];
+    const warps: number[] = [];
+    for (const spec of segPipes) {
+      const [x, h] = spec;
+      const isWarp = spec.length > 2;
+      const pipe: Pipe = { x: offset + x, y: GROUND_Y - h, w: 18, h };
+      pipes.push(pipe);
+      if (isWarp) warps.push(pipes.length - 1);
+    }
+    for (let k = 0; k + 1 < warps.length; k += 2) {
+      const a = pipes[warps[k]!]!;
+      const b = pipes[warps[k + 1]!]!;
+      a.link = b.x;
+      b.link = a.x;
     }
 
     // Коммит ставим на стыке - там всегда земля, значит возрождение безопасно.
@@ -124,8 +165,31 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     });
   });
 
+  // Арена приклеивается последней, уже после набора сегментов: босс должен
+  // стоять между игроком и дверью, а не где-то в середине уровня.
+  const boss: Boss | null = !bp.boss ? null : {
+    // Координаты считаем от начала арены, а не от конца уровня: после арены
+    // идёт ещё выходной кусок, и отсчёт от края уносил босса за неё.
+    x: arenaStart + ARENA.width / 2,
+    y: GROUND_Y - BOSS_H,
+    w: BOSS_W,
+    h: BOSS_H,
+    baseY: GROUND_Y,
+    min: arenaStart + 12,
+    max: arenaStart + ARENA.width - 12,
+    dir: -1,
+    vy: 0,
+    hp: BOSS_HP,
+    hit: 0,
+    recoil: 0,
+    cool: 90,
+    hop: 150,
+    dying: 0,
+  };
+
   return {
     name: bp.name,
+    theme: bp.theme ?? "surface",
     grade: bp.grade,
     width,
     groundY: GROUND_Y,
@@ -143,6 +207,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     deadlineSpeed: bp.deadlineSpeed,
     checkpoints,
     door: { x: width - 30, y: GROUND_Y },
+    boss,
   };
 }
 
@@ -156,16 +221,20 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
  * прежде, чем добавится следующая.
  */
 const BLUEPRINTS: Blueprint[] = [
-  { name: "Стажировка", grade: "СТАЖЁР",  maxSpeed: 1.30, tint: "#1A1728", targetWidth: 2200, seed: 1104, deadlineSpeed: 0,    checkpointEvery: 8 },
+  // Первый уровень собран вручную: он учит, а случайная нарезка учить
+  // не умеет - в ней механика может встретиться впервые сразу над пропастью.
+  { name: "Стажировка", grade: "СТАЖЁР",  maxSpeed: 1.30, tint: "#1A1728", targetWidth: 0,    seed: 1104, deadlineSpeed: 0,    checkpointEvery: 4, handmade: TEACHING },
   { name: "Галера",     grade: "ДЖУН",    maxSpeed: 1.35, tint: "#1A1728", targetWidth: 2560, seed: 1207, deadlineSpeed: 0,    checkpointEvery: 7 },
   { name: "Аутсорс",    grade: "ДЖУН+",   maxSpeed: 1.42, tint: "#1B2030", targetWidth: 2760, seed: 2207, deadlineSpeed: 0,    checkpointEvery: 7 },
+  { name: "Серверная",  grade: "МИДЛ",    maxSpeed: 1.46, tint: "#0E1430", targetWidth: 2600, seed: 7712, deadlineSpeed: 0,    checkpointEvery: 6, theme: "underground" },
   { name: "Студия",     grade: "МИДЛ",    maxSpeed: 1.48, tint: "#1B2438", targetWidth: 2900, seed: 2416, deadlineSpeed: 0,    checkpointEvery: 6 },
   { name: "Стартап",    grade: "МИДЛ+",   maxSpeed: 1.55, tint: "#1E2438", targetWidth: 3000, seed: 3115, deadlineSpeed: 0,    checkpointEvery: 6 },
   { name: "Продукт",    grade: "СЕНЬОР",  maxSpeed: 1.62, tint: "#1E1A2E", targetWidth: 3120, seed: 3310, deadlineSpeed: 0,    checkpointEvery: 6 },
+  { name: "Легаси",     grade: "СЕНЬОР",  maxSpeed: 1.65, tint: "#0E1430", targetWidth: 2900, seed: 8821, deadlineSpeed: 0,    checkpointEvery: 5, theme: "underground" },
   { name: "Платформа",  grade: "СЕНЬОР+", maxSpeed: 1.68, tint: "#201C34", targetWidth: 3200, seed: 4021, deadlineSpeed: 0,    checkpointEvery: 5 },
   { name: "Корпорация", grade: "ЛИД",     maxSpeed: 1.72, tint: "#221E38", targetWidth: 3280, seed: 5218, deadlineSpeed: 0.45, checkpointEvery: 5 },
   { name: "Своя фирма", grade: "ФАУНДЕР", maxSpeed: 1.76, tint: "#26203A", targetWidth: 3360, seed: 6133, deadlineSpeed: 0.52, checkpointEvery: 5 },
-  { name: "Оффер",      grade: "ФИНАЛ",   maxSpeed: 1.80, tint: "#241A2A", targetWidth: 3440, seed: 4413, deadlineSpeed: 0.58, checkpointEvery: 5 },
+  { name: "Оффер",      grade: "ФИНАЛ",   maxSpeed: 1.80, tint: "#241A2A", targetWidth: 3140, seed: 4413, deadlineSpeed: 0.58, checkpointEvery: 5, boss: true },
 ];
 
 export const LEVELS: LevelSpec[] = BLUEPRINTS.map(composeLevel);

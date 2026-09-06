@@ -83,6 +83,16 @@ export const PAL = {
   pipe: "#2E9E6A",
   pipeLite: "#5ED89E",
   pipeDark: "#186E46",
+  pipeMouth: "#0A2C1E",
+
+  // Финальный собес: строгий костюм и холодный экран созвона.
+  boss: "#2B3350",
+  bossLite: "#414C74",
+  bossDark: "#171C2E",
+  bossScreen: "#0E3A46",
+  bossGlow: "#63E6C6",
+  bossTie: "#D0304A",
+  bossHurt: "#FFE9A8",
   pipeRim: "#14563A",
 
   lift: "#B8862E",
@@ -105,4 +115,23 @@ export const PAL = {
   text: "#FFFFFF",
   textDark: "#1C2E66",
   dim: "#5F86B4",
+} as const;
+
+/**
+ * Что меняется под землёй. Остальное - враги, предметы, блоки - остаётся
+ * прежним: узнаваемость важнее полной перекраски, игрок должен понимать
+ * встреченное с первого взгляда и там, и там.
+ */
+export const UNDERGROUND = {
+  sky: "#0E1430",
+  skyHigh: "#161E42",
+  ground: "#3A6E8C",
+  groundLite: "#5A9EBE",
+  groundDark: "#22485E",
+  groundEdge: "#16303E",
+  brick: "#3A6E8C",
+  brickLite: "#5A9EBE",
+  brickDark: "#22485E",
+  brickTop: "#5A9EBE",
+  brickEdge: "#22485E",
 } as const;

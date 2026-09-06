@@ -1,9 +1,9 @@
-import { PAL } from "./palette";
+import { PAL, UNDERGROUND } from "./palette";
 import { LEVELS } from "./levels";
 import { TUNING as T, VIEW } from "./tuning";
 import {
   drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
-  drawItem, drawLift, drawPipe, drawProd, drawShot, drawSquashed, drawSwamp,
+  drawBoss, drawItem, drawLift, drawPipe, drawProd, drawQuestion, drawShot, drawSquashed, drawSwamp,
 } from "./sprites";
 import type { Painter } from "./sprites";
 import type { World } from "./world";
@@ -81,12 +81,31 @@ export class Renderer {
    * которая читается мгновенно. Айтишное здесь дальний план: офисные
    * башни вместо гор.
    */
+  /** Цвет с учётом темы: под землёй часть палитры подменяется. */
+  private tone<K extends keyof typeof UNDERGROUND>(w: World, key: K): string {
+    return w.level.theme === "underground" ? UNDERGROUND[key] : PAL[key];
+  }
+
   private background(w: World): void {
     const p = this.paint;
     const lv = w.level;
 
-    p(0, 0, VIEW.w, VIEW.h, PAL.sky);
-    p(0, 0, VIEW.w, 18, PAL.skyHigh);
+    p(0, 0, VIEW.w, VIEW.h, this.tone(w, "sky"));
+    p(0, 0, VIEW.w, 18, this.tone(w, "skyHigh"));
+
+    // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
+    // создаёт то самое ощущение тесноты, ради которого всё затевалось.
+    if (lv.theme === "underground") {
+      const c = UNDERGROUND;
+      p(0, 0, VIEW.w, 10, c.ground);
+      p(0, 8, VIEW.w, 2, c.groundDark);
+      for (let x = 0; x < VIEW.w; x += 10) p(x, 0, 1, 8, c.groundEdge);
+      for (let i = 0; i < 10; i++) {
+        const gx = i * 46 - ((w.camera * 0.5) % 46);
+        p(gx, 10, 8, 3, c.groundDark);
+      }
+      return;
+    }
 
     for (let i = 0; i < 8; i++) {
       const bx = i * 64 - ((w.camera * 0.3) % 64);
@@ -141,22 +160,23 @@ export class Renderer {
 
     for (const pl of lv.platforms) {
       const solid = pl.h > 6;
-      p(pl.x, pl.y, pl.w, pl.h, solid ? PAL.ground : PAL.brick);
-      p(pl.x, pl.y, pl.w, 2, solid ? PAL.groundLite : PAL.brickLite);
-      p(pl.x, pl.y + 2, pl.w, 1, solid ? PAL.groundDark : PAL.brickDark);
+      p(pl.x, pl.y, pl.w, pl.h, solid ? this.tone(w, "ground") : this.tone(w, "brick"));
+      p(pl.x, pl.y, pl.w, 2, solid ? this.tone(w, "groundLite") : this.tone(w, "brickLite"));
+      p(pl.x, pl.y + 2, pl.w, 1, solid ? this.tone(w, "groundDark") : this.tone(w, "brickDark"));
       if (solid) {
         // Кладка вразбежку: ряды со смещением на полкирпича.
+        const dark = this.tone(w, "groundDark");
         for (let by = pl.y + 3; by < pl.y + pl.h; by += 5) {
-          p(pl.x, by + 4, pl.w, 1, PAL.groundDark);
+          p(pl.x, by + 4, pl.w, 1, dark);
           const shift = ((by - pl.y) / 5) % 2 === 0 ? 0 : 5;
-          for (let bx = pl.x + shift; bx < pl.x + pl.w; bx += 10) p(bx, by, 1, 4, PAL.groundDark);
+          for (let bx = pl.x + shift; bx < pl.x + pl.w; bx += 10) p(bx, by, 1, 4, dark);
         }
-        p(pl.x, pl.y + pl.h - 1, pl.w, 1, PAL.groundEdge);
+        p(pl.x, pl.y + pl.h - 1, pl.w, 1, this.tone(w, "groundEdge"));
       }
     }
 
     for (const s of lv.swamps) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
-    for (const pipe of lv.pipes) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h);
+    for (const pipe of lv.pipes) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, pipe.link !== undefined);
     for (const m of w.moving) drawLift(p, m.x, m.y, m.w);
 
     for (const cp of lv.checkpoints) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
@@ -208,9 +228,26 @@ export class Renderer {
 
     for (const shot of w.shots) drawShot(p, shot.x, shot.y, Math.floor(w.ticks / 4));
 
+    if (w.boss) {
+      const b = w.boss;
+      drawBoss(p, Math.round(b.x), Math.round(b.y), b.w, b.h, {
+        face: b.dir,
+        stride: Math.floor(w.ticks / 7) % 2 === 0,
+        flash: (b.hit > 0 || b.dying > 0) && Math.floor(w.ticks / 3) % 2 === 0,
+        hp: b.hp,
+      });
+    }
+    for (const q of w.questions) drawQuestion(p, Math.round(q.x), Math.round(q.y), Math.floor(w.ticks / 6) % 2 === 0);
+
     for (const q of w.particles) p(q.x, q.y, 2, 2, q.color);
 
     if (w.phase === "play" || w.phase === "clear") this.player(w);
+    // Пока едем по трубе, она рисуется поверх - игрок скрывается в жерле.
+    if (w.warp) {
+      for (const pipe of lv.pipes) {
+        if (pipe.link !== undefined) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, true);
+      }
+    }
 
     if (w.deadlineX !== null) this.deadline(w);
   }

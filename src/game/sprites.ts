@@ -271,11 +271,16 @@ export function drawItem(p: Painter, kind: BlockDrop, x: number, y: number): voi
 }
 
 /** Труба - сплошное препятствие, на которое запрыгивают. */
-export function drawPipe(p: Painter, x: number, y: number, w: number, h: number): void {
+export function drawPipe(p: Painter, x: number, y: number, w: number, h: number, open = false): void {
   // Раструб сверху шире ствола: по этому силуэту труба и узнаётся.
   p(x, y, w, 5, PAL.pipe);
   p(x, y, w, 1, PAL.pipeLite);
   p(x, y + 4, w, 1, PAL.pipeRim);
+  // У проходной трубы видно жерло - иначе игрок не догадается нажать вниз.
+  if (open) {
+    p(x + 3, y + 1, w - 6, 3, PAL.pipeDark);
+    p(x + 4, y + 1, w - 8, 1, PAL.pipeMouth);
+  }
   p(x + 2, y + 5, w - 4, h - 5, PAL.pipe);
   p(x + 2, y + 5, 2, h - 5, PAL.pipeLite);
   p(x + w - 5, y + 5, 3, h - 5, PAL.pipeDark);
@@ -294,4 +299,66 @@ export function drawShot(p: Painter, x: number, y: number, spin: number): void {
   p(x, y, 4, 4, PAL.test);
   p(x, y, 4, 1, PAL.testLite);
   p(x + (spin % 2 ? 0 : 2), y + 1, 2, 2, PAL.testLite);
+}
+
+/**
+ * Финальный собес: говорящая голова в мониторе поверх костюма с галстуком.
+ * Экран вместо лица - потому что последний этап всегда проходит созвоном,
+ * и по ту сторону всегда кто-то, кого ты никогда не увидишь вживую.
+ */
+export function drawBoss(
+  p: Painter,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts: { face: 1 | -1; stride: boolean; flash: boolean; hp: number },
+): void {
+  const body = PAL.boss;
+  const lite = opts.flash ? PAL.bossHurt : PAL.bossLite;
+  const dark = PAL.bossDark;
+
+  // Ноги: переступают в такт ходьбе.
+  const step = opts.stride ? 0 : 2;
+  p(x + 4, y + h - 4, 6, 4, dark);
+  p(x + w - 10, y + h - 4 - step, 6, 4 + step, dark);
+
+  // Костюм.
+  p(x + 2, y + 20, w - 4, h - 24, body);
+  p(x + 2, y + 20, w - 4, 1, lite);
+  p(x + w / 2 - 1, y + 21, 2, h - 26, PAL.bossTie);
+
+  // Монитор: корпус, рамка, экран.
+  p(x, y, w, 20, body);
+  p(x, y, w, 1, lite);
+  p(x, y, 1, 20, lite);
+  p(x + w - 1, y, 1, 20, dark);
+  p(x + 3, y + 3, w - 6, 13, opts.flash ? PAL.bossHurt : PAL.bossScreen);
+
+  // Глаза. С каждым потерянным хп прищур злее - видно, что бой идёт к концу.
+  const squint = 3 - opts.hp;
+  const eyeY = y + 6 + squint;
+  const eyeH = Math.max(1, 4 - squint);
+  const dx = opts.face > 0 ? 1 : -1;
+  p(x + 6, eyeY, 4, eyeH, PAL.bossGlow);
+  p(x + w - 10, eyeY, 4, eyeH, PAL.bossGlow);
+  p(x + 7 + dx, eyeY, 2, eyeH, dark);
+  p(x + w - 9 + dx, eyeY, 2, eyeH, dark);
+
+  // Рот-полоска: чем меньше хп, тем шире оскал.
+  p(x + 8, y + 13, w - 16 + squint * 2, 1, PAL.bossGlow);
+
+  // Оставшиеся этапы собеседования - прямо над головой, где смотрит игрок.
+  for (let i = 0; i < 3; i++) {
+    p(x + 4 + i * 7, y - 5, 5, 3, i < opts.hp ? PAL.bossTie : PAL.bossDark);
+  }
+}
+
+/** Вопрос от босса - реплика созвона, летящая тебе в голову. */
+export function drawQuestion(p: Painter, x: number, y: number, blink: boolean): void {
+  p(x, y, 5, 6, blink ? PAL.bossGlow : PAL.bossScreen);
+  p(x + 1, y + 1, 3, 1, PAL.bossDark);
+  p(x + 3, y + 2, 1, 1, PAL.bossDark);
+  p(x + 2, y + 3, 1, 1, PAL.bossDark);
+  p(x + 2, y + 5, 1, 1, PAL.bossDark);
 }

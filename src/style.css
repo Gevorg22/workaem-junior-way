@@ -199,6 +199,12 @@ body[data-standalone="true"] .hint::after {
   font-size: 15px;
 }
 
+/* Спуск в трубу нужен изредка - кнопка уже ходовых, чтобы не мешала. */
+.pad button.down {
+  min-width: 44px;
+  font-size: 15px;
+}
+
 /* Кнопка броска появляется, только когда есть чем бросать - у сеньора. */
 .pad button.throw {
   color: var(--mint);
