@@ -126,12 +126,22 @@ export class World {
     this.blocks = lv.blocks.map((b) => ({ ...b, bump: 0, used: false, broken: false }));
     this.items = [];
     this.shots = [];
-    this.moving = lv.moving.map((m) => ({
-      x: m.x, y: m.y, w: m.w, h: 4,
-      from: m.axis === "x" ? m.x : m.y,
-      to: (m.axis === "x" ? m.x : m.y) + m.span,
-      axis: m.axis, speed: m.speed, dir: 1,
-    }));
+    this.moving = lv.moving.map((m) => {
+      // Размах может быть отрицательным - лифт, который едет вверх.
+      // Границы обязаны быть упорядочены: иначе разворот срабатывает
+      // в обе стороны каждый кадр, платформа дрожит на месте, а стоящего
+      // на ней игрока трясёт вместе с ней - со стороны это выглядит
+      // как невесомость.
+      const base = m.axis === "x" ? m.x : m.y;
+      const from = Math.min(base, base + m.span);
+      const to = Math.max(base, base + m.span);
+      return {
+        x: m.x, y: m.y, w: m.w, h: 4,
+        from, to,
+        axis: m.axis, speed: m.speed,
+        dir: (m.span >= 0 ? 1 : -1) as 1 | -1,
+      };
+    });
     this.particles = [];
     this.checkpointX = 10;
     this.deadlineX = lv.deadlineSpeed > 0 ? -46 : null;

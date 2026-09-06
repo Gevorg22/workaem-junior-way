@@ -7,6 +7,7 @@
  * не видно, потому что карты собираются из кусков автоматически.
  */
 import { LEVELS } from "../src/game/levels";
+import { World } from "../src/game/world";
 import { MAX_PLATFORM_Y, PLAYER_H_BIG, TUNING as T } from "../src/game/tuning";
 import type { LevelSpec, Rect } from "../src/game/types";
 
@@ -85,10 +86,44 @@ function inspect(lv: LevelSpec): Problem[] {
   return found;
 }
 
+/**
+ * Движущаяся платформа обязана реально проходить свой размах.
+ * Если границы хода перепутаны местами, разворот срабатывает в обе
+ * стороны каждый кадр: платформа дрожит на месте, а стоящего на ней
+ * игрока трясёт вместе с ней. Со стороны это выглядит как невесомость.
+ */
+function checkLifts(index: number): string[] {
+  const w = new World();
+  w.loadLevel(index);
+  w.phase = "play";
+  if (!w.moving.length) return [];
+
+  const seen = w.moving.map(() => ({ lo: Infinity, hi: -Infinity }));
+  for (let f = 0; f < 500; f++) {
+    w.update({ left: false, right: false, jump: false, jumpPressed: false });
+    w.moving.forEach((m, k) => {
+      const v = m.axis === "x" ? m.x : m.y;
+      seen[k]!.lo = Math.min(seen[k]!.lo, v);
+      seen[k]!.hi = Math.max(seen[k]!.hi, v);
+    });
+  }
+
+  const bad: string[] = [];
+  w.moving.forEach((m, k) => {
+    const travelled = seen[k]!.hi - seen[k]!.lo;
+    const expected = m.to - m.from;
+    if (Math.abs(travelled - expected) > 3) {
+      bad.push(`лифт x=${Math.round(m.x)} прошёл ${travelled.toFixed(1)} вместо ${expected.toFixed(1)}`);
+    }
+  });
+  return bad;
+}
+
 let total = 0;
 for (const [i, lv] of LEVELS.entries()) {
   const problems = inspect(lv);
-  total += problems.length;
+  const liftIssues = checkLifts(i);
+  total += problems.length + liftIssues.length;
   const summary = new Map<string, number>();
   for (const p of problems) summary.set(p.kind, (summary.get(p.kind) ?? 0) + 1);
 
@@ -96,9 +131,11 @@ for (const [i, lv] of LEVELS.entries()) {
     `${i + 1}. ${lv.name.padEnd(11)} блоков ${String(lv.blocks.length).padStart(2)}  ` +
       (problems.length
         ? [...summary].map(([k, n]) => `${k}: ${n}`).join(", ")
-        : "конфликтов нет"),
+        : "конфликтов нет") +
+      (lv.moving.length ? `  лифтов ${lv.moving.length}${liftIssues.length ? " - ПРОБЛЕМА" : " ok"}` : ""),
   );
   for (const p of problems.slice(0, 3)) console.log(`     x=${p.x}: ${p.kind} - ${p.detail}`);
+  for (const l of liftIssues) console.log(`     ${l}`);
 }
 
 console.log(total === 0 ? "\nблоки ни с чем не конфликтуют" : `\nКОНФЛИКТОВ: ${total}`);
