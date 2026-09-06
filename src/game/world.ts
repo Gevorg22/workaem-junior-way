@@ -2,7 +2,8 @@ import { levelAt, LEVELS } from "./levels";
 import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
 import type {
-  Block, Foe, Grade, Item, LevelSpec, Particle, Phase, Pickup, Player, Rect, RunStats,
+  Block, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Player,
+  Projectile, Rect, RunStats,
 } from "./types";
 
 const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
@@ -23,6 +24,8 @@ export interface InputState {
   left: boolean;
   right: boolean;
   jump: boolean;
+  /** Бросок теста - доступен только сеньору. */
+  throw?: boolean;
   /** true только в кадр нажатия - из него набивается буфер прыжка. */
   jumpPressed: boolean;
 }
@@ -30,7 +33,7 @@ export interface InputState {
 export type WorldEvent =
   | "stomp" | "hurt" | "pickup" | "coffee"
   | "checkpoint" | "clear" | "death" | "final" | "jump"
-  | "bump" | "break" | "gradeUp" | "gradeDown";
+  | "bump" | "break" | "gradeUp" | "gradeDown" | "throw" | "vacation";
 
 export class World {
   levelIndex = 0;
@@ -43,6 +46,8 @@ export class World {
   coffee: Pickup[] = [];
   blocks: Block[] = [];
   items: Item[] = [];
+  shots: Projectile[] = [];
+  moving: MovingPlatform[] = [];
   foes: Foe[] = [];
   particles: Particle[] = [];
   /** Позиция стены дедлайна, null - стены на уровне нет. */
@@ -58,7 +63,7 @@ export class World {
 
   stats: RunStats = {
     score: 0, skills: 0, levelsCleared: 0, frames: 0,
-    jumps: 0, stomps: 0, deaths: 0, blocks: 0,
+    jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0,
   };
 
   private listeners = new Set<(e: WorldEvent) => void>();
@@ -83,7 +88,7 @@ export class World {
     this.shake = 0;
     this.stats = {
       score: 0, skills: 0, levelsCleared: 0, frames: 0,
-      jumps: 0, stomps: 0, deaths: 0, blocks: 0,
+      jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0,
     };
     this.loadLevel(0);
     this.phase = "play";
@@ -99,7 +104,7 @@ export class World {
     this.player = {
       x: 10, y: lv.groundY - height - 1, w: PLAYER_W, h: height,
       vx: 0, vy: 0, onGround: false, face: 1,
-      coyote: 0, buffer: 0, hurt: 0, boost: 0,
+      coyote: 0, buffer: 0, hurt: 0, boost: 0, vacation: 0, cooldown: 0,
       // Грейд переносится на следующий уровень: карьера не обнуляется
       // при переходе, только при смерти.
       grade,
@@ -120,6 +125,13 @@ export class World {
     });
     this.blocks = lv.blocks.map((b) => ({ ...b, bump: 0, used: false, broken: false }));
     this.items = [];
+    this.shots = [];
+    this.moving = lv.moving.map((m) => ({
+      x: m.x, y: m.y, w: m.w, h: 4,
+      from: m.axis === "x" ? m.x : m.y,
+      to: (m.axis === "x" ? m.x : m.y) + m.span,
+      axis: m.axis, speed: m.speed, dir: 1,
+    }));
     this.particles = [];
     this.checkpointX = 10;
     this.deadlineX = lv.deadlineSpeed > 0 ? -46 : null;
@@ -201,7 +213,7 @@ export class World {
    */
   private damage(fromX: number): void {
     const p = this.player;
-    if (p.hurt > 0) return;
+    if (p.hurt > 0 || p.vacation > 0) return;
 
     p.hurt = T.hurtFrames;
     p.vx = p.x < fromX ? -T.knockbackX : T.knockbackX;
@@ -238,7 +250,9 @@ export class World {
       ...this.player,
       x, y: lv.groundY - PLAYER_H_SMALL - 1,
       h: PLAYER_H_SMALL, vx: 0, vy: 0, hurt: 40, boost: 0, grade: 0,
+      vacation: 0, cooldown: 0,
     };
+    this.shots = [];
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
@@ -277,6 +291,21 @@ export class World {
     if (p.buffer > 0) p.buffer -= 1;
     if (p.hurt > 0) p.hurt -= 1;
     if (p.boost > 0) p.boost -= 1;
+    if (p.vacation > 0) p.vacation -= 1;
+    if (p.cooldown > 0) p.cooldown -= 1;
+
+    // Бросок теста доступен только сеньору - в этом и смысл третьей ступени.
+    if (input.throw && p.grade === 2 && p.cooldown === 0) {
+      p.cooldown = T.throwCooldown;
+      this.shots.push({
+        x: p.face > 0 ? p.x + p.w : p.x - 4,
+        y: p.y + 5,
+        vx: p.face * T.throwSpeed,
+        vy: T.throwLift,
+        life: T.throwLife,
+      });
+      this.emit("throw");
+    }
 
     if (p.buffer > 0 && p.coyote > 0) {
       p.vy = T.jumpImpulse * (inSwamp ? T.swampJumpMultiplier : 1);
@@ -291,10 +320,31 @@ export class World {
 
     p.vy = Math.min(p.vy + T.gravity, T.maxFall);
 
+    // Платформы двигаем до столкновений: иначе игрок сначала встанет на
+    // старое место, а платформа уедет из-под ног в том же кадре.
+    for (const m of this.moving) {
+      const before = m.axis === "x" ? m.x : m.y;
+      const next = before + m.dir * m.speed;
+      if (next <= m.from) m.dir = 1;
+      else if (next >= m.to) m.dir = -1;
+      const delta = m.dir * m.speed;
+      if (m.axis === "x") m.x += delta; else m.y += delta;
+
+      // Стоящего сверху везём с собой.
+      const onTop =
+        p.x + p.w > m.x && p.x < m.x + m.w &&
+        Math.abs(p.y + p.h - m.y) < 3 && p.vy >= 0;
+      if (onTop) {
+        if (m.axis === "x") p.x += delta; else p.y += delta;
+      }
+    }
+
     // По горизонтали блок ничем не отличается от платформы: и то и другое
     // просто останавливает. Различать их нужно только по вертикали.
     const solids: Rect[] = [
       ...lv.platforms,
+      ...lv.pipes,
+      ...this.moving,
       ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
     ];
 
@@ -312,7 +362,7 @@ export class World {
     p.y += p.vy;
     const wasGround = p.onGround;
     p.onGround = false;
-    for (const pl of lv.platforms) {
+    for (const pl of [...lv.platforms, ...lv.pipes, ...this.moving]) {
       if (!overlap(p, pl)) continue;
       if (p.vy > 0) { p.y = pl.y - p.h; p.vy = 0; p.onGround = true; }
       else if (p.vy < 0) { p.y = pl.y + pl.h; p.vy = 0.4; }
@@ -367,7 +417,18 @@ export class World {
       }
       if (item.taken || !overlap(p, { x: item.x, y: item.y, w: 10, h: 10 })) continue;
       item.taken = true;
-      if (item.kind === "offer" && p.grade < 2) {
+      if (item.kind === "tests") {
+        // Тесты сразу дают сеньора: с ними появляется чем отбиваться.
+        if (p.grade < 2) this.setGrade(2);
+        this.score += 400;
+        this.burst(item.x + 5, item.y + 5, PAL.door, 14);
+        this.emit("gradeUp");
+      } else if (item.kind === "vacation") {
+        p.vacation = T.vacationFrames;
+        this.score += T.scoreVacation;
+        this.burst(item.x + 5, item.y + 5, PAL.gemLite, 16);
+        this.emit("vacation");
+      } else if (item.kind === "offer" && p.grade < 2) {
         this.setGrade((p.grade + 1) as Grade);
         this.score += 300;
         this.burst(item.x + 5, item.y + 5, PAL.gem, 12);
@@ -385,6 +446,45 @@ export class World {
     }
 
     for (const b of this.blocks) if (b.bump > 0) b.bump -= 1;
+
+    // Тесты летят по дуге и отскакивают от земли - так они достают врагов,
+    // стоящих в низинах, а не гаснут о первый же бугор.
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const shot = this.shots[i]!;
+      shot.life -= 1;
+      shot.vy = Math.min(shot.vy + T.gravity, 4);
+      shot.x += shot.vx;
+      shot.y += shot.vy;
+
+      const box = { x: shot.x, y: shot.y, w: 4, h: 4 };
+      let dead = shot.life <= 0 || shot.x < this.camera - 20 || shot.x > this.camera + VIEW.w + 20;
+
+      for (const pl of [...lv.platforms, ...lv.pipes, ...this.moving]) {
+        if (!overlap(box, pl)) continue;
+        if (shot.vy > 0 && shot.y + 4 - shot.vy <= pl.y + 1) {
+          shot.y = pl.y - 4;
+          shot.vy = T.throwBounce;
+        } else {
+          dead = true;
+        }
+        break;
+      }
+
+      if (!dead) {
+        for (const f of this.foes) {
+          if (f.squashed > 0) continue;
+          if (!overlap(box, { x: f.x, y: f.y, w: f.w, h: f.h })) continue;
+          f.squashed = 1;
+          this.stats.tested += 1;
+          this.score += T.scoreTested;
+          this.burst(f.x + f.w / 2, f.y + 2, PAL.door, 10);
+          dead = true;
+          break;
+        }
+      }
+
+      if (dead) this.shots.splice(i, 1);
+    }
 
     for (const g of this.gems) {
       if (g.taken || !overlap(p, { x: g.x, y: g.y, w: 8, h: 9 })) continue;
@@ -418,6 +518,16 @@ export class World {
       const stompable = f.kind !== "call";
       const fromAbove = p.vy > T.stompMinFallSpeed && p.y + p.h < f.y + f.h * T.stompTolerance;
 
+      // В отпуске сносим всё, чего касаемся, - даже созвоны.
+      if (p.vacation > 0) {
+        f.squashed = 1;
+        this.score += T.scoreStomp;
+        this.stats.stomps += 1;
+        this.burst(f.x + f.w / 2, f.y + 2, PAL.gemLite, 10);
+        this.emit("stomp");
+        continue;
+      }
+
       if (stompable && fromAbove) {
         f.squashed = 1;
         this.score += T.scoreStomp;
@@ -444,7 +554,7 @@ export class World {
     // не засчитывался, а за дверью оставалось всего 5 пикселей хода до
     // стены, где он и застревал навсегда.
     if (p.x + p.w > lv.door.x + 8) {
-      const door = { x: lv.door.x, y: lv.door.y - 24, w: 16, h: 24 };
+      const door = { x: lv.door.x, y: lv.door.y - 33, w: 18, h: 33 };
       this.score += T.scoreLevelClear + this.lives * T.scoreLifeBonus;
       this.stats.levelsCleared += 1;
       this.phase = "clear";

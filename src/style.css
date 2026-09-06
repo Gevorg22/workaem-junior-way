@@ -198,3 +198,9 @@ body[data-standalone="true"] .hint::after {
   min-width: 44px;
   font-size: 15px;
 }
+
+/* Кнопка броска появляется, только когда есть чем бросать - у сеньора. */
+.pad button.throw {
+  color: var(--mint);
+  border-color: var(--mint);
+}

@@ -80,6 +80,23 @@ export const PAL = {
   offerLite: "#7FE8A8",
   offerDark: "#1A8A4A",
 
+  pipe: "#2E9E6A",
+  pipeLite: "#5ED89E",
+  pipeDark: "#186E46",
+  pipeRim: "#14563A",
+
+  lift: "#B8862E",
+  liftLite: "#E0B45A",
+  liftDark: "#7A5416",
+
+  test: "#4FD8E8",
+  testLite: "#A8F0F8",
+  testDark: "#1E8A9A",
+
+  vacation: "#FF9E3C",
+  vacationLite: "#FFD08A",
+  vacationDark: "#C46A10",
+
   deadline: "#D0304A",
   door: "#2ECC71",
   doorFrame: "#5E3010",

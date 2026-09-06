@@ -2,8 +2,8 @@ import { PAL } from "./palette";
 import { LEVELS } from "./levels";
 import { TUNING as T, VIEW } from "./tuning";
 import {
-  drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor,
-  drawFoe, drawGem, drawItem, drawProd, drawSquashed, drawSwamp,
+  drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
+  drawItem, drawLift, drawPipe, drawProd, drawShot, drawSquashed, drawSwamp,
 } from "./sprites";
 import type { Painter } from "./sprites";
 import type { World } from "./world";
@@ -156,11 +156,13 @@ export class Renderer {
     }
 
     for (const s of lv.swamps) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
+    for (const pipe of lv.pipes) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h);
+    for (const m of w.moving) drawLift(p, m.x, m.y, m.w);
 
     for (const cp of lv.checkpoints) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
 
-    drawDoor(p, lv.door.x, lv.door.y - 24, w.phase === "clear");
-    this.text("СОБЕС", lv.door.x - 4, lv.door.y - 28, PAL.door);
+    drawDoor(p, lv.door.x, lv.door.y - 33, w.phase === "clear");
+    this.text("СОБЕС", lv.door.x - 4, lv.door.y - 37, PAL.door);
 
     for (const g of w.gems) {
       if (g.taken) continue;
@@ -190,6 +192,8 @@ export class Renderer {
       else drawFoe(p, f.kind, x, y, Math.floor(w.ticks / 4) % 2 === 0);
     }
 
+    for (const shot of w.shots) drawShot(p, shot.x, shot.y, Math.floor(w.ticks / 4));
+
     for (const q of w.particles) p(q.x, q.y, 2, 2, q.color);
 
     if (w.phase === "play" || w.phase === "clear") this.player(w);
@@ -209,6 +213,15 @@ export class Renderer {
 
     if (pl.boost > 0 && (pl.boost > 90 || Math.floor(w.ticks / 4) % 2 === 0)) {
       this.paint(x - (pl.face > 0 ? 4 : -9), y + 9, 4, 2, PAL.coffee);
+    }
+
+    // Отпуск виден по мерцающему ореолу - иначе неуязвимость незаметна.
+    if (pl.vacation > 0 && (pl.vacation > 120 || Math.floor(w.ticks / 4) % 2 === 0)) {
+      const glow = Math.floor(w.ticks / 3) % 2 ? PAL.vacationLite : PAL.gemLite;
+      this.paint(x - 1, y - 1, pl.w + 2, 1, glow);
+      this.paint(x - 1, y + pl.h, pl.w + 2, 1, glow);
+      this.paint(x - 1, y, 1, pl.h, glow);
+      this.paint(x + pl.w, y, 1, pl.h, glow);
     }
     drawDev(this.paint, x, y, {
       face: pl.face,

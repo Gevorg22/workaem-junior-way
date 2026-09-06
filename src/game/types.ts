@@ -43,6 +43,8 @@ export interface LevelSpec {
   /** Болото легаси: скорость и прыжок вдвое хуже. */
   swamps: Rect[];
   blocks: BlockSpec[];
+  moving: MovingSpec[];
+  pipes: Pipe[];
   /** Скорость стены дедлайна в px/кадр. 0 - стены нет. */
   deadlineSpeed: number;
   /** Коммиты: пройденный чекпоинт становится точкой возрождения. */
@@ -64,8 +66,16 @@ export type Grade = 0 | 1 | 2;
 
 export const GRADE_NAMES = ["ДЖУН", "МИДЛ", "СЕНЬОР"] as const;
 
-/** Что лежит в блоке с вопросом. */
-export type BlockDrop = "offer" | "coffee";
+/**
+ * Что лежит в блоке с вопросом. Аналоги классических бонусов, но свои:
+ *
+ *  offer   - оффер, поднимает грейд джун -> мидл
+ *  tests   - тесты, поднимают до сеньора и дают чем отбиваться:
+ *            тесты убивают баги, это и правда жизни, и механика
+ *  coffee  - ускорение
+ *  vacation - отпуск: временная неуязвимость, на отдыхе ничто не достанет
+ */
+export type BlockDrop = "offer" | "tests" | "coffee" | "vacation";
 
 export type BlockKind = "question" | "brick";
 
@@ -140,6 +150,54 @@ export interface Player {
   boost: number;
   /** Текущая ступень: 0 джун, 1 мидл, 2 сеньор. */
   grade: Grade;
+  /** Остаток неуязвимости от отпуска. */
+  vacation: number;
+  /** Задержка между бросками тестов. */
+  cooldown: number;
+}
+
+/** Брошенный тест: летит, отскакивает от земли, убивает баги. */
+export interface Projectile {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+}
+
+/**
+ * Платформа, которая ходит между двумя точками.
+ * Игрок на ней едет вместе с ней - иначе она уезжает из-под ног.
+ */
+export interface MovingPlatform {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Границы хода по выбранной оси. */
+  from: number;
+  to: number;
+  axis: "x" | "y";
+  speed: number;
+  dir: 1 | -1;
+}
+
+export interface MovingSpec {
+  x: number;
+  y: number;
+  w: number;
+  axis: "x" | "y";
+  /** Насколько далеко уходит от начальной точки. */
+  span: number;
+  speed: number;
+}
+
+/** Труба: сплошное препятствие, на которое запрыгивают. */
+export interface Pipe {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** Пишется на сервер вместе со счётом - по нему отсекается накрутка. */
@@ -153,4 +211,6 @@ export interface RunStats {
   deaths: number;
   /** Сколько блоков разбито - идёт в счёт и в отсечку накрутки. */
   blocks: number;
+  /** Врагов убито брошенными тестами. */
+  tested: number;
 }

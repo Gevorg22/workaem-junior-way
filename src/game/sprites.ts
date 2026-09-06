@@ -164,23 +164,23 @@ export function drawSwamp(p: Painter, x: number, y: number, w: number, bubbleOff
 }
 
 export function drawDoor(p: Painter, x: number, y: number, open: boolean): void {
-  p(x, y, 16, 24, PAL.doorFrame);
-  p(x + 1, y + 1, 14, 23, open ? PAL.door : PAL.doorShut);
-  p(x + 1, y + 1, 14, 2, "#4A4270");
-  p(x + 11, y + 13, 2, 2, PAL.gem);
+  p(x, y, 18, 33, PAL.doorFrame);
+  p(x + 1, y + 1, 16, 32, open ? PAL.door : PAL.doorShut);
+  p(x + 1, y + 1, 16, 2, "#4A4270");
+  p(x + 13, y + 18, 2, 3, PAL.gem);
 }
 
 /** Чекпоинт - коммит. Пройденный загорается мятным, непройденный серый. */
 export function drawCheckpoint(p: Painter, x: number, y: number, reached: boolean): void {
   const pole = reached ? PAL.door : PAL.legacyDark;
   const flag = reached ? PAL.door : PAL.doorShut;
-  p(x, y - 20, 1, 20, pole);
+  p(x, y - 28, 1, 28, pole);
   p(x - 2, y - 1, 5, 2, pole);
-  p(x + 1, y - 20, 9, 6, flag);
+  p(x + 1, y - 28, 9, 6, flag);
   if (reached) {
-    p(x + 3, y - 18, 2, 2, PAL.sky);
-    p(x + 6, y - 18, 2, 2, PAL.sky);
-    p(x + 3, y - 16, 5, 1, PAL.sky);
+    p(x + 3, y - 26, 2, 2, PAL.sky);
+    p(x + 6, y - 26, 2, 2, PAL.sky);
+    p(x + 3, y - 24, 5, 1, PAL.sky);
   }
 }
 
@@ -233,6 +233,29 @@ export function drawBlock(
 
 /** Предмет из блока: оффер поднимает грейд, кофе ускоряет. */
 export function drawItem(p: Painter, kind: BlockDrop, x: number, y: number): void {
+  if (kind === "tests") {
+    // Колба: тесты - единственное, чем джун может отбиться от багов.
+    p(x + 3, y, 4, 2, PAL.testDark);
+    p(x + 2, y + 2, 6, 3, PAL.testLite);
+    p(x + 1, y + 4, 8, 5, PAL.test);
+    p(x + 1, y + 8, 8, 1, PAL.testDark);
+    p(x + 3, y + 5, 2, 2, PAL.testLite);
+    return;
+  }
+
+  if (kind === "vacation") {
+    // Солнце: на отдыхе ничто не достанет.
+    p(x + 2, y + 2, 6, 6, PAL.vacation);
+    p(x + 3, y + 1, 4, 8, PAL.vacation);
+    p(x + 1, y + 3, 8, 4, PAL.vacation);
+    p(x + 3, y + 3, 3, 3, PAL.vacationLite);
+    p(x, y, 1, 1, PAL.vacationLite);
+    p(x + 9, y, 1, 1, PAL.vacationLite);
+    p(x, y + 9, 1, 1, PAL.vacationLite);
+    p(x + 9, y + 9, 1, 1, PAL.vacationLite);
+    return;
+  }
+
   if (kind === "offer") {
     p(x + 1, y + 1, 8, 8, PAL.offer);
     p(x + 1, y + 1, 8, 1, PAL.offerLite);
@@ -245,4 +268,30 @@ export function drawItem(p: Painter, kind: BlockDrop, x: number, y: number): voi
     return;
   }
   drawCoffee(p, x, y);
+}
+
+/** Труба - сплошное препятствие, на которое запрыгивают. */
+export function drawPipe(p: Painter, x: number, y: number, w: number, h: number): void {
+  // Раструб сверху шире ствола: по этому силуэту труба и узнаётся.
+  p(x, y, w, 5, PAL.pipe);
+  p(x, y, w, 1, PAL.pipeLite);
+  p(x, y + 4, w, 1, PAL.pipeRim);
+  p(x + 2, y + 5, w - 4, h - 5, PAL.pipe);
+  p(x + 2, y + 5, 2, h - 5, PAL.pipeLite);
+  p(x + w - 5, y + 5, 3, h - 5, PAL.pipeDark);
+}
+
+/** Движущаяся платформа: та же доска, но с заклёпками - видно, что механизм. */
+export function drawLift(p: Painter, x: number, y: number, w: number): void {
+  p(x, y, w, 4, PAL.lift);
+  p(x, y, w, 1, PAL.liftLite);
+  p(x, y + 3, w, 1, PAL.liftDark);
+  for (let i = 2; i < w - 2; i += 6) p(x + i, y + 1, 1, 2, PAL.liftDark);
+}
+
+/** Брошенный тест - маленькая колба, летящая по дуге. */
+export function drawShot(p: Painter, x: number, y: number, spin: number): void {
+  p(x, y, 4, 4, PAL.test);
+  p(x, y, 4, 1, PAL.testLite);
+  p(x + (spin % 2 ? 0 : 2), y + 1, 2, 2, PAL.testLite);
 }

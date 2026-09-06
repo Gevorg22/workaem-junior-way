@@ -10,7 +10,7 @@
  * высотой 16% экрана. Сужая кадр, мы делаем полоску выше, а спрайты
  * крупнее - ценой обзора вперёд, поэтому есть нижняя граница.
  */
-export const VIEW = { w: 220, h: 77 };
+export const VIEW = { w: 220, h: 112 };
 
 /** Ниже этого обзора вперёд не хватает, чтобы среагировать на врага. */
 export const VIEW_W_MIN = 150;
@@ -25,29 +25,42 @@ export const VIEW_W_MAX = 220;
  * обязан быть выше макушки большого игрока. Земля 62, большой 15 высотой,
  * значит макушка на 47, а платформа не ниже y=43.
  */
+/**
+ * Вся геометрия считается от роста маленького игрока - это базовая единица
+ * жанра, как рост Марио. Канонические пропорции:
+ *
+ *   большой игрок      2U      блок               1U
+ *   высота прыжка      4U      длина прыжка       5U
+ *   низ блока над землёй 3U    толщина земли      2U
+ *
+ * Отсюда и высота кадра: чтобы над землёй помещалось ~8 ростов, а не 5.6,
+ * иначе блоки приходится вешать над самой головой и прыжок некуда девать.
+ */
+export const UNIT = 11;
+
 export const PLAYER_W = 9;
 export const PLAYER_H_SMALL = 11;
-export const PLAYER_H_BIG = 15;
+export const PLAYER_H_BIG = 22;
 
 /** Самая низкая платформа, под которой большой игрок ещё пролезает. */
-export const MAX_PLATFORM_Y = 43;
+export const MAX_PLATFORM_Y = 64;
 
 export const TUNING = {
   scale: 4,
 
-  accel: 0.55,
+  accel: 0.5,
   friction: 0.8,
-  gravity: 0.3,
-  maxFall: 6.5,
-  jumpImpulse: -5.1,
+  gravity: 0.23,
+  maxFall: 6,
+  jumpImpulse: -4.5,
   /** Отпустил прыжок - скорость подъёма срезается до этого. Даёт прыжок по длительности. */
-  jumpCut: -1.6,
+  jumpCut: -1.4,
   /** Кадры прощения после схода с платформы. Без этого игра ощущается нечестной. */
   coyoteFrames: 7,
   /** Кадры, в которые засчитается прыжок, нажатый до приземления. */
   bufferFrames: 7,
 
-  stompBounce: -3.6,
+  stompBounce: -3.2,
   /** Насколько глубоко надо быть выше врага, чтобы это считалось растаптыванием. */
   stompTolerance: 0.75,
   stompMinFallSpeed: 0.9,
@@ -64,10 +77,22 @@ export const TUNING = {
   cameraEase: 0.11,
   shakeFrames: 8,
 
+  /** Отпуск: неуязвимость примерно на 9 секунд. */
+  vacationFrames: 540,
+  /** Пауза между брошенными тестами. */
+  throwCooldown: 22,
+  throwSpeed: 3.2,
+  throwLift: -2.2,
+  /** Тест живёт около 2 секунд, потом гаснет. */
+  throwLife: 130,
+  throwBounce: -3.4,
+
   startLives: 3,
   scoreGem: 100,
   scoreCoffee: 50,
   scoreStomp: 200,
   scoreLevelClear: 500,
   scoreLifeBonus: 250,
+  scoreTested: 150,
+  scoreVacation: 200,
 } as const;

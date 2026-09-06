@@ -75,6 +75,8 @@ const input = new Input(canvas);
 input.bindButton(need<HTMLElement>("#btn-left"), "left");
 input.bindButton(need<HTMLElement>("#btn-right"), "right");
 input.bindButton(need<HTMLElement>("#btn-jump"), "jump");
+const throwBtn = need<HTMLButtonElement>("#btn-throw");
+input.bindButton(throwBtn, "throw");
 
 /** Вибрация и звук идут парой: оба подтверждают действие, каждый своим каналом. */
 const FEEDBACK: Partial<Record<WorldEvent, () => void>> = {
@@ -87,6 +89,8 @@ const FEEDBACK: Partial<Record<WorldEvent, () => void>> = {
   clear: () => { notify("success"); play("clear"); },
   final: () => { notify("success"); play("clear"); },
   jump: () => play("jump"),
+  throw: () => { haptic("light"); play("coin"); },
+  vacation: () => { notify("success"); play("clear"); },
 };
 
 world.on((event) => {
@@ -99,6 +103,8 @@ function syncHud(): void {
   // В HUD - грейд игрока, а не уровня: он меняется по ходу забега
   // и показывает запас прочности, как размер в платформерах.
   hud.grade.textContent = GRADE_NAMES[world.player.grade] ?? "ДЖУН";
+  // Кнопка броска показывается только когда есть чем бросать.
+  throwBtn.hidden = world.player.grade < 2;
   hud.skills.textContent = String(world.skills);
   hud.score.textContent = String(world.score);
   hud.lives.textContent = world.lives > 0 ? "♥".repeat(world.lives) : "-";
@@ -179,6 +185,10 @@ function frame(): void {
   renderer.draw(world);
   requestAnimationFrame(frame);
 }
+
+// Состояние игры доступно из консоли: без этого любую механику приходится
+// проверять вслепую, гоняя персонажа стрелками до нужного места.
+(window as unknown as { world: World }).world = world;
 
 syncHud();
 canvas.addEventListener("pointerdown", () => canvas.focus());

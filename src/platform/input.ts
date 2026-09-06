@@ -9,6 +9,7 @@ export class Input {
   private right = false;
   private jump = false;
   private jumpEdge = false;
+  private throwHeld = false;
   private confirmEdge = false;
 
   constructor(private target: HTMLElement) {
@@ -32,6 +33,7 @@ export class Input {
   private set(code: string, value: boolean): void {
     if (code === "ArrowLeft" || code === "KeyA") this.left = value;
     if (code === "ArrowRight" || code === "KeyD") this.right = value;
+    if (code === "KeyX" || code === "ShiftLeft" || code === "ShiftRight") this.throwHeld = value;
     if (code === "Space" || code === "ArrowUp" || code === "KeyW") {
       if (value && !this.jump) this.jumpEdge = true;
       this.jump = value;
@@ -39,18 +41,20 @@ export class Input {
   }
 
   /** Кнопки для телефона: в Telegram играют пальцем, клавиатуры там нет. */
-  bindButton(el: HTMLElement, key: "left" | "right" | "jump"): void {
+  bindButton(el: HTMLElement, key: "left" | "right" | "jump" | "throw"): void {
     const press = (e: Event): void => {
       e.preventDefault();
       if (key === "jump") {
         if (!this.jump) this.jumpEdge = true;
         this.jump = true;
         this.confirmEdge = true;
-      } else this[key] = true;
+      } else if (key === "throw") this.throwHeld = true;
+      else this[key] = true;
     };
     const release = (e: Event): void => {
       e.preventDefault();
       if (key === "jump") this.jump = false;
+      else if (key === "throw") this.throwHeld = false;
       else this[key] = false;
     };
     el.addEventListener("pointerdown", press);
@@ -66,6 +70,7 @@ export class Input {
       right: this.right,
       jump: this.jump,
       jumpPressed: this.jumpEdge,
+      throw: this.throwHeld,
       confirm: this.jumpEdge || this.confirmEdge,
     };
     this.jumpEdge = false;

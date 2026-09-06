@@ -20,7 +20,15 @@ function findBlocker(lv: LevelSpec): { x: number; gap: number } | null {
   const { reach, rise } = jumpBox(lv.maxSpeed);
   const maxGap = reach * 0.62;
 
-  const surfaces = [...lv.platforms].sort((a, b) => a.x - b.x);
+  // Движущаяся платформа - тоже опора, просто доезжающая до места.
+  // Для проверки достижимости считаем её полосой во всю длину хода.
+  const lifts = lv.moving.map((m) =>
+    m.axis === "x"
+      ? { x: Math.min(m.x, m.x + m.span), y: m.y, w: m.w + Math.abs(m.span), h: 4 }
+      : { x: m.x, y: Math.min(m.y, m.y + m.span), w: m.w, h: 4 },
+  );
+
+  const surfaces = [...lv.platforms, ...lv.pipes, ...lifts].sort((a, b) => a.x - b.x);
   const start = surfaces.find((s) => s.x <= 10 && s.x + s.w > 10);
   if (!start) return { x: 10, gap: 0 };
 
