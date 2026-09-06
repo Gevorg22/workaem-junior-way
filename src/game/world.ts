@@ -1,5 +1,5 @@
 import { levelAt, LEVELS } from "./levels";
-import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TUNING as T, VIEW } from "./tuning";
+import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
 import type {
   Block, Boss, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Pipe, Player,
@@ -15,6 +15,21 @@ export const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number
   legacy: { w: 12, h: 10, speed: 0.3 },
   bug: { w: 9, h: 8, speed: 0.72 },
   call: { w: 13, h: 10, speed: 0.42 },
+  // Техдолг тяжёлый и медленный: его видно издалека, и обойти проще,
+  // чем сносить. Ростом с маленького игрока, но вдвое шире.
+  debt: { w: 16, h: 12, speed: 0.22 },
+  // Рекрутёр парит, поэтому высота считается от baseY как у созвона.
+  hr: { w: 11, h: 9, speed: 0.5 },
+};
+
+/** Сколько раз надо прыгнуть сверху. Техдолг с одного наскока не убирается. */
+const FOE_HP: Record<Foe["kind"], number> = {
+  legacy: 1, bug: 1, call: 1, debt: 2, hr: 1,
+};
+
+/** Кто парит в воздухе, а не ходит по земле. */
+const FLYING: Record<Foe["kind"], boolean> = {
+  legacy: false, bug: false, call: true, debt: false, hr: true,
 };
 
 /** Джун маленький, с первого оффера становится большим. */
@@ -64,6 +79,8 @@ export class World {
   boss: Boss | null = null;
   /** Вопросы, которыми кидается босс. */
   questions: Projectile[] = [];
+  /** С какого кадра идёт текущий уровень - отсюда считается бонус за скорость. */
+  private levelStartFrame = 0;
   levelIndex = 0;
   level: LevelSpec = levelAt(0);
   phase: Phase = "play";
@@ -150,12 +167,14 @@ export class World {
     this.coffee = lv.coffee.map((c) => ({ x: c.x, y: c.y, taken: false }));
     this.foes = lv.foes.map((f) => {
       const size = FOE_SIZE[f.kind];
+      const flies = FLYING[f.kind];
       return {
         kind: f.kind,
         x: f.x,
-        y: f.kind === "call" ? f.baseY : f.baseY - size.h,
-        baseY: f.kind === "call" ? f.baseY : f.baseY - size.h,
+        y: flies ? f.baseY : f.baseY - size.h,
+        baseY: flies ? f.baseY : f.baseY - size.h,
         min: f.min, max: f.max, dir: 1, squashed: 0,
+        hp: FOE_HP[f.kind],
         speed: size.speed, w: size.w, h: size.h,
       };
     });
@@ -164,6 +183,7 @@ export class World {
     this.shots = [];
     this.boss = lv.boss ? { ...lv.boss } : null;
     this.questions = [];
+    this.levelStartFrame = this.stats.frames;
     this.moving = lv.moving.map((m) => {
       // Размах может быть отрицательным - лифт, который едет вверх.
       // Границы обязаны быть упорядочены: иначе разворот срабатывает
@@ -870,10 +890,20 @@ export class World {
       if (f.x < f.min) { f.x = f.min; f.dir = 1; }
       if (f.x > f.max) { f.x = f.max; f.dir = -1; }
       if (f.kind === "call") f.y = f.baseY + Math.sin((this.ticks + f.min) / 26) * 5;
+      if (f.kind === "hr") {
+        // Рекрутёр летит волной и подтягивается к игроку по высоте: от него
+        // не спрятаться, просто отойдя в сторону. Но по горизонтали он
+        // по-прежнему заперт в своём отрезке - иначе от него не убежать.
+        const wave = Math.sin((this.ticks + f.min) / 18) * 7;
+        const want = Math.max(28, Math.min(lv.groundY - f.h - 8, p.y + p.h - f.h - 6));
+        f.baseY += Math.max(-0.35, Math.min(0.35, want - f.baseY)) * 0.05;
+        f.y = f.baseY + wave;
+      }
 
       if (p.hurt > 0) continue;
       if (!overlap(p, { x: f.x, y: f.y, w: f.w, h: f.h })) continue;
 
+      // Созвон не растаптывается принципиально: совещание прыжком не решить.
       const stompable = f.kind !== "call";
       const fromAbove = p.vy > T.stompMinFallSpeed && p.y + p.h < f.y + f.h * T.stompTolerance;
 
@@ -888,13 +918,24 @@ export class World {
       }
 
       if (stompable && fromAbove) {
-        f.squashed = 1;
-        this.score += T.scoreStomp;
-        this.stats.stomps += 1;
+        f.hp -= 1;
         p.vy = T.stompBounce;
         p.buffer = 0;
         this.shake = 5;
-        this.burst(f.x + f.w / 2, f.y + 2, f.kind === "bug" ? PAL.bug : PAL.legacyLite, 9);
+        this.score += T.scoreStomp;
+        this.stats.stomps += 1;
+        const dust = f.kind === "bug" ? PAL.bug
+          : f.kind === "debt" ? PAL.debtCrack
+          : f.kind === "hr" ? PAL.hrLite
+          : PAL.legacyLite;
+        this.burst(f.x + f.w / 2, f.y + 2, dust, 9);
+        if (f.hp <= 0) {
+          f.squashed = 1;
+        } else {
+          // Техдолг после первого наскока трескается и ускоряется: убрать
+          // его наполовину - значит разозлить оставшуюся половину.
+          f.speed *= 1.6;
+        }
         this.emit("stomp");
       } else {
         this.damage(f.x);
@@ -919,6 +960,11 @@ export class World {
     if (p.x + p.w > lv.door.x + 8 && !this.boss) {
       const door = { x: lv.door.x, y: lv.door.y - 33, w: 18, h: 33 };
       this.score += T.scoreLevelClear + this.lives * T.scoreLifeBonus;
+      // Бонус за скорость: сколько секунд осталось от нормы на уровень.
+      // Не уложился - просто ноль, штрафа за медленную игру нет.
+      const spent = (this.stats.frames - this.levelStartFrame) / TICKS_PER_SECOND;
+      const left = Math.max(0, T.levelParSeconds - spent);
+      this.score += Math.round(left * T.scorePerSecondLeft);
       this.stats.levelsCleared += 1;
       this.phase = "clear";
       this.burst(door.x + 8, door.y + 12, PAL.door, 16);

@@ -187,6 +187,49 @@ export function drawFoe(p: Painter, kind: FoeKind, x: number, y: number, legFram
     return;
   }
 
+  if (kind === "debt") {
+    // Техдолг - бетонная плита с трещинами. Приземистая и широкая, чтобы
+    // силуэт сразу читался как «это не обойти прыжком с разбега».
+    p.round(x + (legFrame ? 1.6 : 3), y + 9.4, 4.4, 2.6, 0.9, PAL.debtDark);
+    p.round(x + (legFrame ? 10 : 8.6), y + 9.4, 4.4, 2.6, 0.9, PAL.debtDark);
+
+    p.grad(x + 0.4, y + 0.6, 15.2, 9.6, PAL.debtLite, PAL.debt, 1.6);
+    p.round(x + 0.4, y + 0.6, 15.2, 1.2, 0.6, "rgba(255,255,255,.18)");
+
+    // Трещины. Ломаная из отрезков читается как скол, а не как узор.
+    p.poly([[x + 4, y + 1], [x + 5, y + 1], [x + 7, y + 5], [x + 6, y + 5]], PAL.debtCrack);
+    p.poly([[x + 6, y + 5], [x + 7, y + 5], [x + 5.6, y + 9], [x + 4.6, y + 9]], PAL.debtCrack);
+    p.poly([[x + 10, y + 2], [x + 10.9, y + 2], [x + 12.4, y + 6.4], [x + 11.5, y + 6.4]], PAL.debtCrack);
+
+    p.oval(x + 4.6, y + 4.2, 1.4, 1.2, PAL.debtCrack);
+    p.oval(x + 11.4, y + 4.2, 1.4, 1.2, PAL.debtCrack);
+    p.circle(x + 4.8, y + 4.1, 0.5, PAL.shirt);
+    p.circle(x + 11.6, y + 4.1, 0.5, PAL.shirt);
+    p.round(x + 5.4, y + 7, 5.2, 0.9, 0.45, PAL.debtCrack);
+    return;
+  }
+
+  if (kind === "hr") {
+    // Рекрутёр - гарнитура с крыльями. Летает волной и сам подтягивается
+    // к игроку по высоте: от него не спрятаться, просто отойдя в сторону.
+    // Всё держится внутри 11x9 - габарита хитбокса, это сторожит check:sprites.
+    const flap = legFrame ? 1.4 : 0.2;
+    p.oval(x + 1.3, y + 3.4 - flap, 1.3, 1.5, PAL.hrDark);
+    p.oval(x + 9.6, y + 3.4 - flap, 1.3, 1.5, PAL.hrDark);
+
+    p.grad(x + 2.2, y + 1.2, 6.6, 6.2, PAL.hrLite, PAL.hr, 2.6);
+    p.round(x + 2.6, y + 0.3, 5.8, 1.3, 0.65, PAL.hrDark);
+    p.round(x + 1.9, y + 1.6, 1.5, 3.2, 0.75, PAL.hrDark);
+    p.round(x + 7.6, y + 1.6, 1.5, 3.2, 0.75, PAL.hrDark);
+
+    p.circle(x + 4.3, y + 4, 0.8, PAL.eye);
+    p.circle(x + 6.7, y + 4, 0.8, PAL.eye);
+    p.round(x + 4.1, y + 5.8, 2.8, 0.85, 0.42, PAL.hrDark);
+    // Подвес снизу дотягивает силуэт ровно до нижней грани хитбокса.
+    p.oval(x + 5.5, y + 8.2, 2.2, 0.8, PAL.hr);
+    return;
+  }
+
   // Созвон - окно видеозвонка: полоса заголовка с кнопками и лицо внутри.
   // Растоптать нельзя, поэтому силуэт нарочно не похож на остальных.
   p.round(x + 0.6, y + 8.4, 11.8, 1.6, 0.8, PAL.callDark);

@@ -1,6 +1,6 @@
 import { PAL, UNDERGROUND } from "./palette";
 import { LEVELS } from "./levels";
-import { RENDER, TUNING as T, VIEW } from "./tuning";
+import { RENDER, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
 import {
   drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
   drawBoss, drawItem, drawLift, drawPipe, drawProd, drawQuestion, drawShot, drawSquashed, drawSwamp,
@@ -104,6 +104,14 @@ export class Renderer {
     this.text(str, (VIEW.w - w) / 2, y, color, size, display);
   }
 
+  /** Кадры в «мм:сс». Кадр здесь - тик физики, их ровно TICKS_PER_SECOND в секунду. */
+  private static clock(frames: number): string {
+    const total = Math.floor(frames / TICKS_PER_SECOND);
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
+  }
+
   draw(w: World): void {
     const ctx = this.ctx;
     const k = T.scale * RENDER.density;
@@ -125,9 +133,8 @@ export class Renderer {
         accent: PAL.door,
         big: w.level.grade,
         rows: [
-          `скиллов ${w.skills}`,
-          `очков ${w.score}`,
-          `жизней ${w.lives}`,
+          `очков ${w.score} · скиллов ${w.skills}`,
+          `время ${Renderer.clock(w.stats.frames)} · жизней ${w.lives}`,
         ],
         hint: last ? "финальный собес - жми" : "дальше",
       });
@@ -137,9 +144,8 @@ export class Renderer {
         accent: PAL.shirt,
         big: `${w.stats.levelsCleared} из ${LEVELS.length}`,
         rows: [
-          `очков ${w.score}`,
-          `скиллов ${w.skills}`,
-          `смертей ${w.stats.deaths}`,
+          `очков ${w.score} · скиллов ${w.skills}`,
+          `время ${Renderer.clock(w.stats.frames)} · смертей ${w.stats.deaths}`,
         ],
         hint: "начать заново",
       });
@@ -149,8 +155,9 @@ export class Renderer {
         accent: PAL.gem,
         big: "ЛИД",
         rows: [
-          `скиллов ${w.skills} · очков ${w.score}`,
-          `растоптано ${w.stats.stomps} · смертей ${w.stats.deaths}`,
+          `очков ${w.score} · скиллов ${w.skills}`,
+          `время ${Renderer.clock(w.stats.frames)} · смертей ${w.stats.deaths}`,
+          `растоптано ${w.stats.stomps} · труб ${w.stats.pipes}`,
         ],
         hint: "вакансии на твой грейд - workaem.com",
         celebrate: true,
@@ -356,10 +363,12 @@ export class Renderer {
       p.oval(bx + 9 * k, lv.groundY - 3 * k, 3.4 * k, 2.4 * k, PAL.hillLite);
     }
 
-    // Заливка ниже земли идёт ПОСЛЕДНЕЙ. Холмы и кусты рисуются овалами,
-    // и их нижние половины уходят под линию земли: если закрасить низ
-    // раньше, зелёные купола проступают сквозь пол.
-    p(0, lv.groundY, VIEW.w, VIEW.h - lv.groundY, PAL.groundEdge);
+    // Ниже линии земли закрашиваем только узкую полосу под холмами:
+    // они рисуются овалами, и нижние половины уходят под пол. Всю нижнюю
+    // часть кадра заливать нельзя - тогда ямы выглядят коричневой плашкой,
+    // а не обрывом. Под каждым куском пола толща дорисовывается отдельно
+    // в world(), и между ними остаётся видно фон - это и есть пропасть.
+    p(0, lv.groundY, VIEW.w, 2, PAL.groundEdge);
   }
 
   private world(w: World): void {
@@ -425,6 +434,14 @@ export class Renderer {
       }
       // Низ уходит в тень: земля перестаёт быть плоской плашкой.
       p.grad(pl.x, pl.y + pl.h - 4, pl.w, 4, "rgba(0,0,0,0)", this.tone(w, "groundEdge"));
+
+      // Толща под куском пола до самого низа кадра. Раньше низ заливался
+      // целиком, и яма выглядела коричневой плашкой; теперь между кусками
+      // видно фон, и обрыв читается обрывом.
+      const below = VIEW.h - (pl.y + pl.h);
+      if (below > 0) {
+        p.grad(pl.x, pl.y + pl.h, pl.w, below, this.tone(w, "groundEdge"), "#2A1608");
+      }
     }
 
     for (const s of lv.swamps) {

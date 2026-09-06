@@ -78,6 +78,16 @@ export const PAL = {
   bugLite: "#F05A4A",
   bugDark: "#8A1414",
 
+  /** Техдолг - серый бетон с трещинами: его видно издалека и он тяжёлый. */
+  debt: "#6E6A7E",
+  debtLite: "#95909F",
+  debtDark: "#413E50",
+  debtCrack: "#2A2833",
+  /** Рекрутёр - бирюзовый, чтобы отличался от всех наземных. */
+  hr: "#2FA8A0",
+  hrLite: "#5FD6CC",
+  hrDark: "#1B6B66",
+
   call: "#8A5AD8",
   callLite: "#B48AF0",
   callDark: "#5E3A9E",

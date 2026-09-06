@@ -96,7 +96,7 @@ console.log("\nбосс:");
 }
 
 console.log("\nвраги: спрайт против хитбокса");
-for (const kind of ["legacy", "bug", "call"] as const) {
+for (const kind of ["legacy", "bug", "call", "debt", "hr"] as const) {
   const box = FOE_SIZE[kind];
   for (const step of [true, false]) {
     const b = measure((paint) => drawFoe(paint, kind, 0, 0, step));

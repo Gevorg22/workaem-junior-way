@@ -419,6 +419,43 @@ export const SEGMENTS: Segment[] = [
     gems: [[16, 62], [122, 62]],
     foes: [{ kind: "legacy", x: 116, span: 14 }],
   },
+
+  {
+    // Техдолг перегораживает проход. Убрать его - два прыжка на голову,
+    // после первого он трескается и ускоряется. Проще обойти по кирпичам
+    // сверху, чем сносить: с техдолгом обычно так и поступают.
+    id: "debt-block",
+    width: 132,
+    minLevel: 2,
+    ground: [[0, 132]],
+    foes: [{ kind: "debt", x: 56, span: 22 }],
+    blocks: [[38, 45, "brick"], [50, 45, "brick"], [62, 45, "question", "coffee"], [74, 45, "brick"]],
+    gems: [[44, 30], [68, 30]],
+  },
+  {
+    // Рекрутёр летает волной и сам подтягивается к игроку по высоте.
+    // Отойти в сторону не поможет - только растоптать или убежать.
+    id: "hr-flight",
+    width: 138,
+    minLevel: 3,
+    ground: [[0, 138]],
+    foes: [{ kind: "hr", x: 70, y: 58, span: 34 }],
+    platforms: [[30, 62, 22], [88, 62, 22]],
+    gems: [[38, 50], [96, 50], [64, 68]],
+  },
+  {
+    // Двое разом: техдолг внизу, рекрутёр сверху.
+    id: "debt-and-hr",
+    width: 156,
+    minLevel: 4,
+    ground: [[0, 156]],
+    foes: [
+      { kind: "debt", x: 46, span: 24 },
+      { kind: "hr", x: 106, y: 54, span: 30 },
+    ],
+    blocks: [[86, 45, "brick"], [98, 45, "brick"], [110, 45, "brick"]],
+    gems: [[30, 66], [140, 66]],
+  },
 ];
 
 
@@ -466,7 +503,11 @@ export function segmentDifficulty(seg: Segment): number {
   if (last && last[0] + last[1] < seg.width) score += (seg.width - last[0] - last[1]) / 8;
 
   for (const f of seg.foes ?? []) {
-    score += f.kind === "call" ? 3.5 : f.kind === "bug" ? 2.5 : 1.5;
+    score += f.kind === "call" ? 3.5
+      : f.kind === "hr" ? 3.2
+      : f.kind === "debt" ? 3
+      : f.kind === "bug" ? 2.5
+      : 1.5;
   }
   for (const h of seg.hazards ?? []) score += 1.5 + h[1] / 40;
   for (const sw of seg.swamps ?? []) score += 2 + sw[1] / 50;
@@ -476,6 +517,8 @@ export function segmentDifficulty(seg: Segment): number {
   // Длинный кусок при прочих равных тяжелее - дольше без передышки.
   return score * (0.8 + seg.width / 500);
 }
+
+/* Куски с новыми врагами вынесены сюда же, в общую ротацию. */
 
 export const TEACHING: Segment[] = [
   {
