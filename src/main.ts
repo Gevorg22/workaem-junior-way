@@ -9,7 +9,7 @@ import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
 import { currentUser, haptic, isTelegram, notify, setupViewport } from "./platform/telegram";
 import { reportRun, resetReport } from "./platform/report";
-import { isMuted, play, playMusic, stopMusic, toggleMute, unlock } from "./platform/audio";
+import { isMuted, play, playMusic, stopMusic, suspendAudio, toggleMute, unlock } from "./platform/audio";
 
 const WORKAEM = "https://www.workaem.com";
 
@@ -273,6 +273,12 @@ function frame(now: number): void {
 
 syncHud();
 canvas.addEventListener("pointerdown", () => canvas.focus());
+
+// Свернули игру - замолкаем. Иначе музыка играет человеку в другом чате.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) suspendAudio();
+});
+window.addEventListener("pagehide", () => suspendAudio());
 
 // Поворот телефона меняет пропорции - пересчитываем кадр.
 // orientationchange приходит до того, как размеры обновятся, поэтому resize.

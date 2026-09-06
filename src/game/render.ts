@@ -366,9 +366,25 @@ export class Renderer {
     const p = this.paint;
     const lv = w.level;
 
-    for (const h of lv.hazards) drawProd(p, h.x, h.y - 4, h.w);
+    /**
+     * Видно ли объект. Раньше отсечения не было вовсе: на девятом уровне
+     * рисовалось 466 кирпичей кладки при 32 нужных и 58 платформ при трёх
+     * видимых - 93 процента работы уходило за край экрана. На маке это
+     * незаметно, а игру открывают с телефона.
+     *
+     * Запас в 24 пикселя с каждой стороны - чтобы объекты не выскакивали
+     * на кромке при плавном движении камеры.
+     */
+    const left = w.camera - 24;
+    const right = w.camera + VIEW.w + 24;
+    const seen = (x: number, width = 12): boolean => x < right && x + width > left;
+
+    for (const h of lv.hazards) {
+      if (seen(h.x, h.w)) drawProd(p, h.x, h.y - 4, h.w);
+    }
 
     for (const pl of lv.platforms) {
+      if (!seen(pl.x, pl.w)) continue;
       const solid = pl.h > 6;
 
       if (!solid) {
@@ -411,25 +427,36 @@ export class Renderer {
       p.grad(pl.x, pl.y + pl.h - 4, pl.w, 4, "rgba(0,0,0,0)", this.tone(w, "groundEdge"));
     }
 
-    for (const s of lv.swamps) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
-    for (const pipe of lv.pipes) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, pipe.link !== undefined);
-    for (const m of w.moving) drawLift(p, m.x, m.y, m.w);
+    for (const s of lv.swamps) {
+      if (seen(s.x, s.w)) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
+    }
+    for (const pipe of lv.pipes) {
+      if (seen(pipe.x, pipe.w)) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, pipe.link !== undefined);
+    }
+    for (const m of w.moving) {
+      if (seen(m.x, m.w)) drawLift(p, m.x, m.y, m.w);
+    }
 
-    for (const cp of lv.checkpoints) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
+    for (const cp of lv.checkpoints) {
+      if (seen(cp.x, 12)) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
+    }
 
     drawDoor(p, lv.door.x, lv.door.y - 33, w.phase === "clear");
     this.text("СОБЕС", lv.door.x - 4, lv.door.y - 37, PAL.door);
 
     for (const g of w.gems) {
+      if (!seen(g.x, 8)) continue;
       if (g.taken) continue;
       drawGem(p, g.x, g.y + Math.sin((w.ticks + g.x) / 15) * 1.5);
     }
     for (const c of w.coffee) {
+      if (!seen(c.x, 9)) continue;
       if (c.taken) continue;
       drawCoffee(p, c.x, c.y + Math.sin((w.ticks + c.x) / 18) * 1.2);
     }
 
     for (const b of w.blocks) {
+      if (!seen(b.x, 12)) continue;
       if (b.broken) continue;
       // Подскок после удара снизу - без него удар не читается.
       const lift = b.bump > 0 ? -Math.round(Math.sin((b.bump / 8) * Math.PI) * 3) : 0;
@@ -437,6 +464,7 @@ export class Renderer {
     }
 
     for (const item of w.items) {
+      if (!seen(item.x, 10)) continue;
       if (item.taken) continue;
       // Мерцающая рамка цветом предмета: на пёстром фоне из кирпича, холмов
       // и облаков маленькая фигурка теряется, а понять, что именно выпало,
@@ -453,13 +481,16 @@ export class Renderer {
     }
 
     for (const f of w.foes) {
+      if (!seen(f.x, 14)) continue;
       const x = Math.round(f.x);
       const y = Math.round(f.y);
       if (f.squashed > 0) drawSquashed(p, f.kind, x, y, f.w, f.h, f.squashed);
       else drawFoe(p, f.kind, x, y, Math.floor(w.ticks / 4) % 2 === 0);
     }
 
-    for (const shot of w.shots) drawShot(p, shot.x, shot.y, Math.floor(w.ticks / 4));
+    for (const shot of w.shots) {
+      if (seen(shot.x, 5)) drawShot(p, shot.x, shot.y, Math.floor(w.ticks / 4));
+    }
 
     if (w.boss) {
       const b = w.boss;

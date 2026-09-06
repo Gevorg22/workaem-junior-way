@@ -31,10 +31,18 @@ function ensure(): AudioContext | null {
   }
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctor) return null;
-  ctx = new Ctor();
-  master = ctx.createGain();
-  master.gain.value = 0.22;
-  master.connect(ctx.destination);
+  try {
+    ctx = new Ctor();
+    master = ctx.createGain();
+    master.gain.value = 0.22;
+    master.connect(ctx.destination);
+  } catch {
+    // Экзотический браузер, запрет политикой, исчерпание контекстов - игра
+    // обязана работать молча, а не падать.
+    ctx = null;
+    master = null;
+    return null;
+  }
   return ctx;
 }
 
@@ -129,7 +137,11 @@ const PATTERNS: Record<Sound, Note[]> = {
 export function play(sound: Sound): void {
   if (muted) return;
   if (!ensure()) return;
-  for (const note of PATTERNS[sound]) tone(note);
+  try {
+    for (const note of PATTERNS[sound]) tone(note);
+  } catch {
+    // Звук - не повод ронять игру.
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -232,16 +244,21 @@ function schedule(): void {
   // Ограничитель на всякий случай: часы контекста могут прыгнуть вперёд,
   // и цикл без потолка подвесил бы вкладку.
   let guard = 0;
-  while (nextAt < audio.currentTime + LOOKAHEAD && guard++ < 32) {
-    const i = step % tune.lead.length;
-    const lead = tune.lead[i] ?? REST;
-    const bass = tune.bass[i] ?? REST;
-    if (lead !== REST) voice(audio, lead, nextAt, STEP * 1.6, "square", 0.16);
-    if (bass !== REST) voice(audio, bass, nextAt, STEP * 1.9, "triangle", 0.3);
-    // Тихий щелчок на каждую четвёртую долю - без него мелодия плывёт.
-    if (i % 4 === 0) voice(audio, 84, nextAt, 0.03, "square", 0.03);
-    nextAt += STEP;
-    step += 1;
+  try {
+    while (nextAt < audio.currentTime + LOOKAHEAD && guard++ < 32) {
+      const i = step % tune.lead.length;
+      const lead = tune.lead[i] ?? REST;
+      const bass = tune.bass[i] ?? REST;
+      if (lead !== REST) voice(audio, lead, nextAt, STEP * 1.6, "square", 0.16);
+      if (bass !== REST) voice(audio, bass, nextAt, STEP * 1.9, "triangle", 0.3);
+      // Тихий щелчок на каждую четвёртую долю - без него мелодия плывёт.
+      if (i % 4 === 0) voice(audio, 84, nextAt, 0.03, "square", 0.03);
+      nextAt += STEP;
+      step += 1;
+    }
+  } catch {
+    // Контекст закрыли из-под нас - молчим, но игру не роняем.
+    stopMusic();
   }
 }
 
@@ -255,15 +272,22 @@ export function playMusic(tune: Tune): void {
   if (!audio || !master) return;
   if (musicTimer !== null && musicTune === tune) return;
 
-  stopMusic();
-  musicTune = tune;
-  musicGain = audio.createGain();
-  musicGain.gain.value = 0.34;
-  musicGain.connect(master);
-  step = 0;
-  nextAt = audio.currentTime + 0.08;
-  schedule();
-  musicTimer = window.setInterval(schedule, 25);
+  // Всё тело под защитой: playMusic зовётся КАЖДЫЙ кадр из цикла отрисовки,
+  // и любое исключение отсюда оборвало бы кадр до requestAnimationFrame -
+  // игра встала бы намертво, а не просто замолчала.
+  try {
+    stopMusic();
+    musicTune = tune;
+    musicGain = audio.createGain();
+    musicGain.gain.value = 0.34;
+    musicGain.connect(master);
+    step = 0;
+    nextAt = audio.currentTime + 0.08;
+    schedule();
+    musicTimer = window.setInterval(schedule, 25);
+  } catch {
+    stopMusic();
+  }
 }
 
 export function stopMusic(): void {
@@ -278,6 +302,27 @@ export function stopMusic(): void {
     window.setTimeout(() => dying.disconnect(), 300);
   }
   musicGain = null;
+}
+
+/**
+ * Полное молчание: игру свернули.
+ *
+ * Планировщик живёт на setInterval и от кадрового цикла не зависит, а
+ * playMusic и stopMusic зовутся только из кадра. В свёрнутой вкладке кадров
+ * нет - остановить музыку было некому, и она продолжала играть человеку
+ * в другом чате. Браузер таймер лишь притормаживает до секунды, а не
+ * останавливает, поэтому «само замолчит» не работает: схема догоняющая и
+ * за каждый редкий вызов успевает положить очередную ноту.
+ *
+ * Контекст ещё и усыпляем: на iOS живой AudioContext держит аудиосессию
+ * и глушит музыку, которую человек слушал до игры.
+ *
+ * Обратно ничего включать не нужно - на первом же кадре после возврата
+ * playMusic сам разбудит контекст через ensure() и заведёт тему заново.
+ */
+export function suspendAudio(): void {
+  stopMusic();
+  if (ctx && ctx.state === "running") void ctx.suspend();
 }
 
 /** Вызывается на первом касании: до него браузер звук не разрешает. */
