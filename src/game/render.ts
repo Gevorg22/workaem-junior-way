@@ -2,8 +2,8 @@ import { PAL } from "./palette";
 import { LEVELS } from "./levels";
 import { TUNING as T, VIEW } from "./tuning";
 import {
-  drawCheckpoint, drawCoffee, drawDev, drawDoor,
-  drawFoe, drawGem, drawProd, drawSquashed, drawSwamp,
+  drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor,
+  drawFoe, drawGem, drawItem, drawProd, drawSquashed, drawSwamp,
 } from "./sprites";
 import type { Painter } from "./sprites";
 import type { World } from "./world";
@@ -76,34 +76,58 @@ export class Renderer {
     this.centered(sub, VIEW.h / 2 + 10, PAL.text, 7);
   }
 
+  /**
+   * Дневная сцена: небо, облака, холмы, кусты - жанровая условность,
+   * которая читается мгновенно. Айтишное здесь дальний план: офисные
+   * башни вместо гор.
+   */
   private background(w: World): void {
     const p = this.paint;
     const lv = w.level;
-    p(0, 0, VIEW.w, VIEW.h, PAL.sky);
 
-    for (let c = 0; c < 7; c++) {
-      let cx = (c * 74 - w.camera * 0.12) % (VIEW.w + 80);
-      if (cx < -60) cx += VIEW.w + 80;
-      const cy = 8 + ((c * 17) % 14);
-      p(cx, cy, 14, 3, PAL.cloud);
-      p(cx + 3, cy - 2, 9, 3, PAL.cloud);
-      p(cx - 3, cy + 2, 20, 2, PAL.cloud);
-    }
-    for (let i = 0; i < 14; i++) {
-      const hx = i * 58 - ((w.camera * 0.22) % 58);
-      const hh = 14 + ((i * 23) % 12);
-      p(hx, lv.groundY - hh, 30, hh, lv.tint);
-      p(hx + 2, lv.groundY - hh, 26, 1, PAL.far);
-    }
-    for (let b = 0; b < 22; b++) {
-      const bx = b * 46 - ((w.camera * 0.42) % 46);
-      const bh = 16 + ((b * 31) % 20);
-      p(bx, lv.groundY - bh, 30, bh, PAL.far);
-      for (let win = 0; win < 3; win++) {
-        for (let v = 0; v < Math.floor(bh / 7); v++) {
-          if ((b + win + v) % 3 === 0) p(bx + 5 + win * 8, lv.groundY - bh + 5 + v * 7, 3, 3, "#2E2A44");
-        }
+    p(0, 0, VIEW.w, VIEW.h, PAL.sky);
+    p(0, 0, VIEW.w, 18, PAL.skyHigh);
+
+    for (let i = 0; i < 8; i++) {
+      const bx = i * 64 - ((w.camera * 0.3) % 64);
+      const bh = 22 + ((i * 29) % 16);
+      p(bx, lv.groundY - bh, 20, bh, i % 2 ? PAL.tower : PAL.towerDark);
+      for (let row = 0; row < Math.floor(bh / 6); row++) {
+        p(bx + 3, lv.groundY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
+        p(bx + 12, lv.groundY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
       }
+    }
+
+    for (let c = 0; c < 6; c++) {
+      let cx = (c * 86 - w.camera * 0.14) % (VIEW.w + 100);
+      if (cx < -70) cx += VIEW.w + 100;
+      const cy = 6 + ((c * 19) % 12);
+      p(cx + 4, cy, 16, 4, PAL.cloud);
+      p(cx, cy + 3, 24, 5, PAL.cloud);
+      p(cx + 7, cy - 3, 10, 4, PAL.cloud);
+      p(cx, cy + 7, 24, 1, PAL.cloudShade);
+    }
+
+    // Холмы: ступенчатая пирамида читается как округлый холм.
+    for (let i = 0; i < 10; i++) {
+      const hx = i * 96 - ((w.camera * 0.42) % 96);
+      const tall = i % 2 === 0;
+      const hh = tall ? 22 : 14;
+      const hw = tall ? 46 : 30;
+      for (let step = 0; step < hh; step += 2) {
+        const inset = Math.round((step / hh) * (hw / 2 - 3));
+        p(hx + inset, lv.groundY - hh + step, hw - inset * 2, 2, PAL.hill);
+      }
+      p(hx + hw / 2 - 4, lv.groundY - hh + 4, 3, 2, PAL.hillDark);
+      p(hx + hw / 2 + 2, lv.groundY - hh + 7, 3, 2, PAL.hillDark);
+    }
+
+    // Кусты вдоль земли - тот же силуэт, что у облаков, только зелёный.
+    for (let b = 0; b < 12; b++) {
+      const bx = b * 78 - ((w.camera * 0.7) % 78);
+      p(bx + 3, lv.groundY - 5, 14, 5, PAL.bush);
+      p(bx, lv.groundY - 3, 20, 3, PAL.bush);
+      p(bx + 7, lv.groundY - 8, 7, 4, PAL.bush);
     }
   }
 
@@ -114,12 +138,18 @@ export class Renderer {
     for (const h of lv.hazards) drawProd(p, h.x, h.y - 4, h.w);
 
     for (const pl of lv.platforms) {
-      p(pl.x, pl.y, pl.w, pl.h, PAL.brick);
-      p(pl.x, pl.y, pl.w, 2, PAL.brickTop);
-      p(pl.x, pl.y + 2, pl.w, 1, PAL.brickEdge);
-      if (pl.h > 6) {
-        for (let bx = pl.x; bx < pl.x + pl.w; bx += 8) p(bx, pl.y + 3, 1, pl.h - 3, PAL.brickLine);
-        for (let by = pl.y + 7; by < pl.y + pl.h; by += 5) p(pl.x, by, pl.w, 1, PAL.brickLine);
+      const solid = pl.h > 6;
+      p(pl.x, pl.y, pl.w, pl.h, solid ? PAL.ground : PAL.brick);
+      p(pl.x, pl.y, pl.w, 2, solid ? PAL.groundLite : PAL.brickLite);
+      p(pl.x, pl.y + 2, pl.w, 1, solid ? PAL.groundDark : PAL.brickDark);
+      if (solid) {
+        // Кладка вразбежку: ряды со смещением на полкирпича.
+        for (let by = pl.y + 3; by < pl.y + pl.h; by += 5) {
+          p(pl.x, by + 4, pl.w, 1, PAL.groundDark);
+          const shift = ((by - pl.y) / 5) % 2 === 0 ? 0 : 5;
+          for (let bx = pl.x + shift; bx < pl.x + pl.w; bx += 10) p(bx, by, 1, 4, PAL.groundDark);
+        }
+        p(pl.x, pl.y + pl.h - 1, pl.w, 1, PAL.groundEdge);
       }
     }
 
@@ -137,6 +167,18 @@ export class Renderer {
     for (const c of w.coffee) {
       if (c.taken) continue;
       drawCoffee(p, c.x, c.y + Math.sin((w.ticks + c.x) / 18) * 1.2);
+    }
+
+    for (const b of w.blocks) {
+      if (b.broken) continue;
+      // Подскок после удара снизу - без него удар не читается.
+      const lift = b.bump > 0 ? -Math.round(Math.sin((b.bump / 8) * Math.PI) * 3) : 0;
+      drawBlock(p, b.kind, b.x, b.y + lift, b.used, w.ticks);
+    }
+
+    for (const item of w.items) {
+      if (item.taken) continue;
+      drawItem(p, item.kind, item.x, item.y);
     }
 
     for (const f of w.foes) {
@@ -171,6 +213,7 @@ export class Renderer {
       walking,
       airborne,
       stride: Math.floor(w.ticks / 5) % 2 === 0,
+      grade: pl.grade,
     });
   }
 

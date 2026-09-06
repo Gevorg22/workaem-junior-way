@@ -1,7 +1,9 @@
 import { levelAt, LEVELS } from "./levels";
 import { TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
-import type { Foe, LevelSpec, Particle, Phase, Pickup, Player, Rect, RunStats } from "./types";
+import type {
+  Block, Foe, Grade, Item, LevelSpec, Particle, Phase, Pickup, Player, Rect, RunStats,
+} from "./types";
 
 const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
   legacy: { w: 12, h: 9, speed: 0.3 },
@@ -23,7 +25,8 @@ export interface InputState {
 
 export type WorldEvent =
   | "stomp" | "hurt" | "pickup" | "coffee"
-  | "checkpoint" | "clear" | "death" | "final";
+  | "checkpoint" | "clear" | "death" | "final" | "jump"
+  | "bump" | "break" | "gradeUp" | "gradeDown";
 
 export class World {
   levelIndex = 0;
@@ -34,6 +37,8 @@ export class World {
   camera = 0;
   gems: Pickup[] = [];
   coffee: Pickup[] = [];
+  blocks: Block[] = [];
+  items: Item[] = [];
   foes: Foe[] = [];
   particles: Particle[] = [];
   /** Позиция стены дедлайна, null - стены на уровне нет. */
@@ -47,7 +52,10 @@ export class World {
   shake = 0;
   ticks = 0;
 
-  stats: RunStats = { score: 0, skills: 0, levelsCleared: 0, frames: 0, jumps: 0, stomps: 0, deaths: 0 };
+  stats: RunStats = {
+    score: 0, skills: 0, levelsCleared: 0, frames: 0,
+    jumps: 0, stomps: 0, deaths: 0, blocks: 0,
+  };
 
   private listeners = new Set<(e: WorldEvent) => void>();
 
@@ -69,7 +77,10 @@ export class World {
     this.skills = 0;
     this.ticks = 0;
     this.shake = 0;
-    this.stats = { score: 0, skills: 0, levelsCleared: 0, frames: 0, jumps: 0, stomps: 0, deaths: 0 };
+    this.stats = {
+      score: 0, skills: 0, levelsCleared: 0, frames: 0,
+      jumps: 0, stomps: 0, deaths: 0, blocks: 0,
+    };
     this.loadLevel(0);
     this.phase = "play";
   }
@@ -83,6 +94,9 @@ export class World {
       x: 10, y: lv.groundY - 16, w: 9, h: 15,
       vx: 0, vy: 0, onGround: false, face: 1,
       coyote: 0, buffer: 0, hurt: 0, boost: 0,
+      // Грейд переносится на следующий уровень: карьера не обнуляется
+      // при переходе, только при смерти.
+      grade: (this.player?.grade ?? 0) as Grade,
     };
     this.camera = 0;
     this.gems = lv.gems.map((g) => ({ x: g.x, y: g.y, taken: false }));
@@ -98,6 +112,8 @@ export class World {
         speed: size.speed, w: size.w, h: size.h,
       };
     });
+    this.blocks = lv.blocks.map((b) => ({ ...b, bump: 0, used: false, broken: false }));
+    this.items = [];
     this.particles = [];
     this.checkpointX = 10;
     this.deadlineX = lv.deadlineSpeed > 0 ? -46 : null;
@@ -118,6 +134,36 @@ export class World {
     }
   }
 
+  /**
+   * Кирпич ломает только сеньор - у джуна на это не хватает грейда.
+   * Так рост даёт не просто запас прочности, а новые возможности.
+   */
+  private hitBlock(b: Block): void {
+    if (b.bump > 0) return;
+    b.bump = 8;
+
+    if (b.kind === "question" && !b.used) {
+      b.used = true;
+      this.items.push({ kind: b.drop ?? "coffee", x: b.x + 1, y: b.y - 10, rise: 12, taken: false });
+      this.emit("bump");
+      return;
+    }
+
+    if (b.kind === "brick" && this.player.grade === 2) {
+      b.broken = true;
+      this.stats.blocks += 1;
+      this.score += 50;
+      this.hud();
+      for (const dx of [2, 9]) this.burst(b.x + dx, b.y + 4, PAL.brick, 5);
+      this.emit("break");
+      return;
+    }
+
+    this.emit("bump");
+  }
+
+  private hud(): void {}
+
   private burst(x: number, y: number, color: string, count: number): void {
     for (let i = 0; i < count; i++) {
       this.particles.push({
@@ -130,14 +176,27 @@ export class World {
     }
   }
 
+  /**
+   * Урон сначала откатывает грейд и только на джуне отнимает жизнь.
+   * Так собранный оффер - это реальный запас прочности, а не просто очки.
+   */
   private damage(fromX: number): void {
     const p = this.player;
     if (p.hurt > 0) return;
+
     p.hurt = T.hurtFrames;
     p.vx = p.x < fromX ? -T.knockbackX : T.knockbackX;
     p.vy = T.knockbackY;
-    this.lives -= 1;
     this.shake = T.shakeFrames;
+
+    if (p.grade > 0) {
+      p.grade = (p.grade - 1) as Grade;
+      this.burst(p.x + 4, p.y + 6, PAL.gem, 10);
+      this.emit("gradeDown");
+      return;
+    }
+
+    this.lives -= 1;
     this.burst(p.x + 4, p.y + 6, PAL.shirt, 8);
     this.emit("hurt");
     if (this.lives <= 0) this.phase = "over";
@@ -155,7 +214,8 @@ export class World {
     // Возрождение на последнем коммите, а не в начале карты:
     // на длинной карте откат в начало обесценивает всё пройденное.
     const x = this.checkpointX;
-    this.player = { ...this.player, x, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0 };
+    // Смерть обнуляет карьеру: начинаем с джуна.
+    this.player = { ...this.player, x, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0, grade: 0 };
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
@@ -201,17 +261,24 @@ export class World {
       p.coyote = 0;
       p.buffer = 0;
       this.stats.jumps += 1;
+      this.emit("jump");
     }
     // Прыжок по длительности нажатия: отпустил - подъём срезается.
     if (!input.jump && p.vy < T.jumpCut) p.vy = T.jumpCut;
 
     p.vy = Math.min(p.vy + T.gravity, T.maxFall);
 
+    // Блоки - такие же твёрдые, как платформы, пока не разбиты.
+    const solids: Rect[] = [
+      ...lv.platforms,
+      ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
+    ];
+
     // Горизонталь
     p.x += p.vx;
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x + p.w > lv.width) { p.x = lv.width - p.w; p.vx = 0; }
-    for (const pl of lv.platforms) {
+    for (const pl of solids) {
       if (!overlap(p, pl)) continue;
       p.x = p.vx > 0 ? pl.x - p.w : pl.x + pl.w;
       p.vx = 0;
@@ -221,10 +288,21 @@ export class World {
     p.y += p.vy;
     const wasGround = p.onGround;
     p.onGround = false;
-    for (const pl of lv.platforms) {
+    for (const pl of solids) {
       if (!overlap(p, pl)) continue;
       if (p.vy > 0) { p.y = pl.y - p.h; p.vy = 0; p.onGround = true; }
       else if (p.vy < 0) { p.y = pl.y + pl.h; p.vy = 0.4; }
+    }
+
+    // Удар снизу: главный жест жанра. Определяем по движению вверх и по тому,
+    // что макушка оказалась выше низа блока.
+    if (p.vy <= 0.4) {
+      for (const b of this.blocks) {
+        if (b.broken) continue;
+        if (!overlap(p, { x: b.x, y: b.y, w: 12, h: 12 })) continue;
+        if (p.y > b.y + 8) continue;
+        this.hitBlock(b);
+      }
     }
     if (p.onGround || (wasGround && p.coyote === 0)) p.coyote = T.coyoteFrames;
 
@@ -238,6 +316,29 @@ export class World {
       this.deadlineX += lv.deadlineSpeed;
       if (p.x < this.deadlineX + 8) { this.respawn(); return; }
     }
+
+    for (const item of this.items) {
+      if (item.rise > 0) { item.rise -= 1; item.y -= 0.6; continue; }
+      if (item.taken || !overlap(p, { x: item.x, y: item.y, w: 10, h: 10 })) continue;
+      item.taken = true;
+      if (item.kind === "offer" && p.grade < 2) {
+        p.grade = (p.grade + 1) as Grade;
+        this.score += 300;
+        this.burst(item.x + 5, item.y + 5, PAL.gem, 12);
+        this.emit("gradeUp");
+      } else if (item.kind === "coffee") {
+        p.boost = T.coffeeFrames;
+        this.score += T.scoreCoffee;
+        this.burst(item.x + 5, item.y + 5, PAL.coffee, 9);
+        this.emit("coffee");
+      } else {
+        this.score += 100;
+        this.emit("pickup");
+      }
+      this.hud();
+    }
+
+    for (const b of this.blocks) if (b.bump > 0) b.bump -= 1;
 
     for (const g of this.gems) {
       if (g.taken || !overlap(p, { x: g.x, y: g.y, w: 8, h: 9 })) continue;

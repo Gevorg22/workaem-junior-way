@@ -1,5 +1,5 @@
 import { PAL } from "./palette";
-import type { FoeKind } from "./types";
+import type { BlockDrop, BlockKind, FoeKind, Grade } from "./types";
 
 /**
  * Спрайты рисуются прямоугольниками через Painter, а не через готовые картинки.
@@ -14,10 +14,24 @@ export interface DevPose {
   airborne: boolean;
   /** Кадр цикла ходьбы: чередование ног. */
   stride: boolean;
+  /** Грейд меняет только вид, хитбокс остаётся 9x15 - иначе не пролезть под платформы. */
+  grade: Grade;
 }
 
 export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
-  const { face, walking, airborne, stride } = pose;
+  const { face, walking, airborne, stride, grade } = pose;
+
+  // Рост рисуем вверх от хитбокса: голова торчит выше, столкновения не меняются.
+  if (grade >= 1) {
+    p(x + 1, y - 3, 7, 3, PAL.hair);
+    p(x, y - 2, 9, 2, PAL.hair);
+  }
+  if (grade === 2) {
+    // Наушники - самый быстрый способ показать сеньора одним силуэтом.
+    p(x - 1, y - 2, 2, 5, PAL.headphones);
+    p(x + 8, y - 2, 2, 5, PAL.headphones);
+    p(x, y - 4, 9, 2, PAL.headphones);
+  }
 
   p(x + 1, y, 7, 2, PAL.hair);
   p(x, y + 1, 9, 3, PAL.hair);
@@ -25,8 +39,8 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
   p(x + (face > 0 ? 5 : 2), y + 4, 1, 2, PAL.eye);
   p(x + 1, y + 3, 2, 1, PAL.hair);
 
-  p(x, y + 7, 9, 5, PAL.shirt);
-  p(x, y + 7, 9, 1, PAL.shirtLite);
+  p(x, y + 7, 9, 5, grade === 2 ? PAL.pants : PAL.shirt);
+  p(x, y + 7, 9, 1, grade === 2 ? "#4A6ACC" : PAL.shirtLite);
   p(x + (face > 0 ? 0 : 6), y + 8, 3, 3, PAL.shirtDark);
 
   if (airborne) {
@@ -138,4 +152,67 @@ export function drawCheckpoint(p: Painter, x: number, y: number, reached: boolea
     p(x + 6, y - 18, 2, 2, PAL.sky);
     p(x + 3, y - 16, 5, 1, PAL.sky);
   }
+}
+
+/** Блок с вопросом - главный жест жанра: бьёшь снизу, выпадает предмет. */
+export function drawBlock(
+  p: Painter,
+  kind: BlockKind,
+  x: number,
+  y: number,
+  used: boolean,
+  ticks: number,
+): void {
+  if (kind === "brick") {
+    p(x, y, 12, 12, PAL.brick);
+    p(x, y, 12, 1, PAL.brickLite);
+    p(x, y + 11, 12, 1, PAL.brickDark);
+    // Кладка вразбежку: два ряда со смещением читаются как кирпич.
+    p(x, y + 5, 12, 1, PAL.brickDark);
+    p(x + 5, y + 1, 1, 4, PAL.brickDark);
+    p(x + 2, y + 6, 1, 5, PAL.brickDark);
+    p(x + 9, y + 6, 1, 5, PAL.brickDark);
+    return;
+  }
+
+  if (used) {
+    p(x, y, 12, 12, PAL.blockUsed);
+    p(x, y, 12, 1, "#B08A50");
+    p(x, y + 11, 12, 1, PAL.blockUsedDark);
+    return;
+  }
+
+  p(x, y, 12, 12, PAL.block);
+  p(x, y, 12, 1, PAL.blockLite);
+  p(x, y + 11, 12, 1, PAL.blockDark);
+  // Заклёпки по углам.
+  p(x + 1, y + 1, 2, 2, PAL.blockDark);
+  p(x + 9, y + 1, 2, 2, PAL.blockDark);
+  p(x + 1, y + 9, 2, 2, PAL.blockDark);
+  p(x + 9, y + 9, 2, 2, PAL.blockDark);
+
+  // Мигающий знак вопроса.
+  const bright = Math.floor(ticks / 18) % 4 !== 0;
+  const ink = bright ? PAL.textDark : PAL.blockDark;
+  p(x + 4, y + 3, 4, 1, ink);
+  p(x + 7, y + 4, 1, 2, ink);
+  p(x + 5, y + 6, 2, 1, ink);
+  p(x + 5, y + 7, 1, 1, ink);
+  p(x + 5, y + 9, 1, 1, ink);
+}
+
+/** Предмет из блока: оффер поднимает грейд, кофе ускоряет. */
+export function drawItem(p: Painter, kind: BlockDrop, x: number, y: number): void {
+  if (kind === "offer") {
+    p(x + 1, y + 1, 8, 8, PAL.offer);
+    p(x + 1, y + 1, 8, 1, PAL.offerLite);
+    p(x + 1, y + 8, 8, 1, PAL.offerDark);
+    // Галочка - знак принятого оффера.
+    p(x + 3, y + 5, 1, 2, PAL.text);
+    p(x + 4, y + 6, 1, 1, PAL.text);
+    p(x + 5, y + 4, 1, 2, PAL.text);
+    p(x + 6, y + 3, 1, 2, PAL.text);
+    return;
+  }
+  drawCoffee(p, x, y);
 }

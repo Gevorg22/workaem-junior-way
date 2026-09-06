@@ -1,7 +1,3 @@
-// Собранный файл для вставки в панель Cloudflare - она принимает один модуль.
-// Не редактировать: правки вносятся в worker/index.js и пересобираются
-// командой `npm run build:worker`.
-
 // worker/telegram.js
 var enc = new TextEncoder();
 async function hmac(keyBytes, messageBytes) {
@@ -53,7 +49,7 @@ var TOTAL_LEVELS = 4;
 var MIN_FRAMES = Math.floor(TOTAL_LEVEL_WIDTH / MAX_SPEED);
 function checkRun(stats) {
   if (!stats || typeof stats !== "object") return { ok: false, reason: "\u043D\u0435\u0442 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438" };
-  const nums = ["score", "skills", "levelsCleared", "frames", "jumps", "stomps", "deaths"];
+  const nums = ["score", "skills", "levelsCleared", "frames", "jumps", "stomps", "deaths", "blocks"];
   for (const key of nums) {
     const v = stats[key];
     if (!Number.isInteger(v) || v < 0) return { ok: false, reason: `${key}: \u043D\u0435 \u0446\u0435\u043B\u043E\u0435 \u043D\u0435\u043E\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0435` };
@@ -70,7 +66,8 @@ function checkRun(stats) {
   if (stats.levelsCleared > 0 && stats.jumps === 0) {
     return { ok: false, reason: "\u0443\u0440\u043E\u0432\u043D\u0438 \u043F\u0440\u043E\u0439\u0434\u0435\u043D\u044B \u0431\u0435\u0437 \u0435\u0434\u0438\u043D\u043E\u0433\u043E \u043F\u0440\u044B\u0436\u043A\u0430" };
   }
-  const maxScore = stats.skills * 100 + stats.stomps * 200 + stats.levelsCleared * (500 + 3 * 250) + 50 * 20;
+  const maxScore = stats.skills * 100 + stats.stomps * 200 + stats.blocks * 50 + // Оффер из блока даёт 300, кофе 50; блоков на картах заметно меньше сотни.
+  100 * 300 + stats.levelsCleared * (500 + 3 * 250);
   if (stats.score > maxScore) {
     return { ok: false, reason: `${stats.score} \u043E\u0447\u043A\u043E\u0432 \u043F\u0440\u0438 \u043C\u0430\u043A\u0441\u0438\u043C\u0443\u043C\u0435 ${maxScore}` };
   }

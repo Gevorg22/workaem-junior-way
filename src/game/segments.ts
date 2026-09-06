@@ -33,6 +33,11 @@ export interface Segment {
   hazards?: Array<[number, number]>;
   /** Болото легаси: [x, ширина]. */
   swamps?: Array<[number, number]>;
+  /**
+   * Блоки: [x, y, вид, что внутри].
+   * Ставим на высоте, куда достаёт прыжок снизу, но которую можно и обойти.
+   */
+  blocks?: Array<[number, number, "question" | "brick", ("offer" | "coffee")?]>;
 }
 
 export const GROUND_Y = 62;
@@ -58,6 +63,7 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 96]],
     platforms: [[26, 46, 26], [62, 34, 24]],
     gems: [[36, 36], [72, 24]],
+    blocks: [[8, 44, "question", "offer"]],
   },
   {
     id: "patrol",
@@ -82,6 +88,7 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 112]],
     platforms: [[22, 44, 22], [50, 34, 22], [80, 44, 22]],
     gems: [[30, 34], [58, 24], [88, 34]],
+    blocks: [[8, 42, "brick"], [100, 42, "question", "coffee"]],
   },
 
   {
@@ -100,6 +107,7 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 120]],
     foes: [{ kind: "bug", x: 60, span: 46 }],
     gems: [[26, 44], [94, 44]],
+    blocks: [[40, 42, "brick"], [52, 42, "question", "offer"], [64, 42, "brick"]],
   },
   {
     id: "coffee-straight",
@@ -108,6 +116,7 @@ export const SEGMENTS: Segment[] = [
     ground: [[0, 108]],
     coffee: [[30, 44]],
     gems: [[64, 44], [88, 44]],
+    blocks: [[62, 40, "question", "offer"]],
   },
   {
     id: "tower",
@@ -144,6 +153,7 @@ export const SEGMENTS: Segment[] = [
     foes: [{ kind: "call", x: 60, y: 44, span: 36 }],
     platforms: [[34, 40, 24], [70, 40, 24]],
     gems: [[42, 30], [78, 30]],
+    blocks: [[14, 42, "brick"], [104, 42, "question", "coffee"]],
   },
   {
     id: "gauntlet",
@@ -156,6 +166,7 @@ export const SEGMENTS: Segment[] = [
     ],
     platforms: [[62, 40, 24]],
     gems: [[70, 30], [124, 44]],
+    blocks: [[24, 42, "question", "offer"], [36, 42, "brick"]],
   },
   {
     id: "leap-chain",
@@ -202,10 +213,15 @@ export const INTRO: Segment = {
   gems: [[52, 44]],
 };
 
+/**
+ * Финишный отрезок с лестницей - деталь, по которой жанр узнают сразу.
+ * Ступени ведут вверх, дверь стоит на земле сразу за ними.
+ */
 export const OUTRO: Segment = {
   id: "outro",
-  width: 92,
+  width: 104,
   minLevel: 0,
-  ground: [[0, 92]],
-  gems: [[26, 44]],
+  ground: [[0, 104]],
+  platforms: [[20, 54, 8], [28, 46, 8], [36, 38, 8], [44, 30, 8]],
+  gems: [[48, 20], [12, 44]],
 };

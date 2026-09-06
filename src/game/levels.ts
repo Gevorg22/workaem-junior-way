@@ -1,6 +1,6 @@
 import { GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, SWAMP_Y } from "./segments";
 import type { Segment } from "./segments";
-import type { FoeSpec, LevelSpec, Rect, Vec } from "./types";
+import type { BlockSpec, FoeSpec, LevelSpec, Rect, Vec } from "./types";
 
 /**
  * Детерминированный генератор: один и тот же сид даёт одну и ту же карту.
@@ -58,6 +58,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   const coffee: Vec[] = [];
   const hazards: Rect[] = [];
   const swamps: Rect[] = [];
+  const blocks: BlockSpec[] = [];
   const checkpoints: Vec[] = [];
 
   let offset = 0;
@@ -82,6 +83,9 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     for (const [x, y] of seg.coffee ?? []) coffee.push({ x: offset + x, y });
     for (const [x, w] of seg.hazards ?? []) hazards.push({ x: offset + x, y: HAZARD_Y, w, h: 6 });
     for (const [x, w] of seg.swamps ?? []) swamps.push({ x: offset + x, y: SWAMP_Y, w, h: 4 });
+    for (const [x, y, kind, drop] of seg.blocks ?? []) {
+      blocks.push(drop ? { kind, x: offset + x, y, drop } : { kind, x: offset + x, y });
+    }
 
     // Коммит ставим на стыке - там всегда земля, значит возрождение безопасно.
     const isInner = index > 0 && index < chain.length - 1;
@@ -105,6 +109,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     coffee,
     hazards,
     swamps,
+    blocks,
     deadlineSpeed: bp.deadlineSpeed,
     checkpoints,
     door: { x: width - 30, y: GROUND_Y },

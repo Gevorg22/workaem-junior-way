@@ -192,3 +192,9 @@ body[data-standalone="true"] .hint::after {
 @media (orientation: portrait) and (max-width: 560px) {
   .rotate-hint { display: block; }
 }
+
+/* Кнопка звука мельче игровых: ею пользуются раз за сессию, а не постоянно. */
+.pad button.sound {
+  min-width: 44px;
+  font-size: 15px;
+}

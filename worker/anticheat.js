@@ -21,7 +21,7 @@ const MIN_FRAMES = Math.floor(TOTAL_LEVEL_WIDTH / MAX_SPEED);
 export function checkRun(stats) {
   if (!stats || typeof stats !== "object") return { ok: false, reason: "нет статистики" };
 
-  const nums = ["score", "skills", "levelsCleared", "frames", "jumps", "stomps", "deaths"];
+  const nums = ["score", "skills", "levelsCleared", "frames", "jumps", "stomps", "deaths", "blocks"];
   for (const key of nums) {
     const v = stats[key];
     if (!Number.isInteger(v) || v < 0) return { ok: false, reason: `${key}: не целое неотрицательное` };
@@ -46,7 +46,12 @@ export function checkRun(stats) {
 
   // Очки складываются из известных слагаемых - верхнюю границу можно посчитать.
   const maxScore =
-    stats.skills * 100 + stats.stomps * 200 + stats.levelsCleared * (500 + 3 * 250) + 50 * 20;
+    stats.skills * 100 +
+    stats.stomps * 200 +
+    stats.blocks * 50 +
+    // Оффер из блока даёт 300, кофе 50; блоков на картах заметно меньше сотни.
+    100 * 300 +
+    stats.levelsCleared * (500 + 3 * 250);
   if (stats.score > maxScore) {
     return { ok: false, reason: `${stats.score} очков при максимуме ${maxScore}` };
   }

@@ -3,11 +3,13 @@ import { LEVELS } from "./game/levels";
 import { PAL } from "./game/palette";
 import { Renderer } from "./game/render";
 import { TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
+import { GRADE_NAMES } from "./game/types";
 import { World } from "./game/world";
 import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
 import { currentUser, haptic, isTelegram, notify, setupViewport } from "./platform/telegram";
 import { reportRun, resetReport } from "./platform/report";
+import { isMuted, play, toggleMute, unlock } from "./platform/audio";
 
 const WORKAEM = "https://www.workaem.com";
 
@@ -62,6 +64,7 @@ const outroStats = need<HTMLElement>("#outro-stats");
 const jobsLink = need<HTMLAnchorElement>("#jobs-link");
 const shareLink = need<HTMLAnchorElement>("#share-link");
 const replayBtn = need<HTMLButtonElement>("#replay");
+const soundBtn = need<HTMLButtonElement>("#sound");
 
 setupViewport(PAL.sky);
 
@@ -73,25 +76,29 @@ input.bindButton(need<HTMLElement>("#btn-left"), "left");
 input.bindButton(need<HTMLElement>("#btn-right"), "right");
 input.bindButton(need<HTMLElement>("#btn-jump"), "jump");
 
-const HAPTICS: Partial<Record<WorldEvent, () => void>> = {
-  stomp: () => haptic("medium"),
-  pickup: () => haptic("light"),
-  coffee: () => haptic("soft"),
-  checkpoint: () => haptic("rigid"),
-  hurt: () => notify("error"),
-  death: () => notify("error"),
-  clear: () => notify("success"),
-  final: () => notify("success"),
+/** Вибрация и звук идут парой: оба подтверждают действие, каждый своим каналом. */
+const FEEDBACK: Partial<Record<WorldEvent, () => void>> = {
+  stomp: () => { haptic("medium"); play("stomp"); },
+  pickup: () => { haptic("light"); play("coin"); },
+  coffee: () => { haptic("soft"); play("coffee"); },
+  checkpoint: () => { haptic("rigid"); play("checkpoint"); },
+  hurt: () => { notify("error"); play("hurt"); },
+  death: () => { notify("error"); play("over"); },
+  clear: () => { notify("success"); play("clear"); },
+  final: () => { notify("success"); play("clear"); },
+  jump: () => play("jump"),
 };
 
 world.on((event) => {
-  HAPTICS[event]?.();
+  FEEDBACK[event]?.();
   if (event === "final") showOutro();
 });
 
 function syncHud(): void {
   hud.level.textContent = `Уровень ${world.levelIndex + 1} · ${world.level.name}`;
-  hud.grade.textContent = world.level.grade;
+  // В HUD - грейд игрока, а не уровня: он меняется по ходу забега
+  // и показывает запас прочности, как размер в платформерах.
+  hud.grade.textContent = GRADE_NAMES[world.player.grade] ?? "ДЖУН";
   hud.skills.textContent = String(world.skills);
   hud.score.textContent = String(world.score);
   hud.lives.textContent = world.lives > 0 ? "♥".repeat(world.lives) : "-";
@@ -120,6 +127,25 @@ function showOutro(): void {
 
 function hideOutro(): void {
   outro.hidden = true;
+}
+
+function syncSoundButton(): void {
+  const off = isMuted();
+  soundBtn.textContent = off ? "🔇" : "🔊";
+  soundBtn.setAttribute("aria-label", off ? "Включить звук" : "Выключить звук");
+  soundBtn.setAttribute("aria-pressed", String(off));
+}
+
+soundBtn.addEventListener("click", () => {
+  toggleMute();
+  syncSoundButton();
+  canvas.focus();
+});
+syncSoundButton();
+
+// Браузер запрещает звук до первого касания - разблокируем на нём.
+for (const ev of ["pointerdown", "keydown"]) {
+  window.addEventListener(ev, () => unlock(), { once: true });
 }
 
 replayBtn.addEventListener("click", () => {

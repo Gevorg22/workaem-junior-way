@@ -6,7 +6,7 @@
 import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
 import { PAL } from "../src/game/palette";
-import { drawCheckpoint, drawCoffee, drawDev, drawFoe, drawGem } from "../src/game/sprites";
+import { drawBlock, drawCheckpoint, drawDev, drawFoe, drawGem, drawItem } from "../src/game/sprites";
 import type { Painter } from "../src/game/sprites";
 
 const LW = 160;
@@ -69,62 +69,74 @@ function word(text: string, x: number, y: number, color: string, shadow?: string
 const GY = 70;
 
 paint(0, 0, LW, LH, PAL.sky);
+paint(0, 0, LW, 22, PAL.skyHigh);
 
-for (let c = 0; c < 5; c++) {
-  const cx = 12 + c * 34;
-  const cy = 10 + ((c * 13) % 10);
-  paint(cx, cy, 14, 3, PAL.cloud);
-  paint(cx + 3, cy - 2, 9, 3, PAL.cloud);
-  paint(cx - 3, cy + 2, 20, 2, PAL.cloud);
-}
-
-for (let i = 0; i < 6; i++) {
-  const hx = i * 30 - 6;
-  const hh = 18 + ((i * 23) % 14);
-  paint(hx, GY - hh, 32, hh, "#1A1728");
-  paint(hx + 2, GY - hh, 28, 1, PAL.far);
-}
-for (let b = 0; b < 8; b++) {
-  const bx = b * 22 - 4;
-  const bh = 20 + ((b * 31) % 22);
-  paint(bx, GY - bh, 18, bh, PAL.far);
-  for (let w = 0; w < 2; w++) {
-    for (let v = 0; v < Math.floor(bh / 7); v++) {
-      if ((b + w + v) % 3 === 0) paint(bx + 4 + w * 7, GY - bh + 5 + v * 7, 3, 3, "#2E2A44");
-    }
+for (let i = 0; i < 4; i++) {
+  const bx = 10 + i * 44;
+  const bh = 26 + ((i * 29) % 16);
+  paint(bx, GY - bh, 20, bh, i % 2 ? PAL.tower : PAL.towerDark);
+  for (let row = 0; row < Math.floor(bh / 6); row++) {
+    paint(bx + 3, GY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
+    paint(bx + 12, GY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
   }
 }
 
-// земля с провалом
-paint(0, GY, 96, 20, PAL.brick);
-paint(0, GY, 96, 2, PAL.brickTop);
-paint(0, GY + 2, 96, 1, PAL.brickEdge);
-paint(122, GY, 38, 20, PAL.brick);
-paint(122, GY, 38, 2, PAL.brickTop);
-paint(122, GY + 2, 38, 1, PAL.brickEdge);
-for (let bx = 0; bx < 160; bx += 8) {
-  if (bx < 96 || bx >= 122) paint(bx, GY + 3, 1, 17, PAL.brickLine);
+for (let c = 0; c < 3; c++) {
+  const cx = 16 + c * 56;
+  const cy = 8 + ((c * 17) % 10);
+  paint(cx + 4, cy, 16, 4, PAL.cloud);
+  paint(cx, cy + 3, 24, 5, PAL.cloud);
+  paint(cx + 7, cy - 3, 10, 4, PAL.cloud);
+  paint(cx, cy + 7, 24, 1, PAL.cloudShade);
 }
-// прод в провале
+
+for (let i = 0; i < 3; i++) {
+  const hx = i * 62 - 10;
+  const hh = i % 2 ? 16 : 24;
+  const hw = i % 2 ? 32 : 48;
+  for (let step = 0; step < hh; step += 2) {
+    const inset = Math.round((step / hh) * (hw / 2 - 3));
+    paint(hx + inset, GY - hh + step, hw - inset * 2, 2, PAL.hill);
+  }
+}
+
+for (let b = 0; b < 4; b++) {
+  const bx = b * 46 + 6;
+  paint(bx + 3, GY - 5, 14, 5, PAL.bush);
+  paint(bx, GY - 3, 20, 3, PAL.bush);
+  paint(bx + 7, GY - 8, 7, 4, PAL.bush);
+}
+
+function groundRun(x: number, w: number): void {
+  paint(x, GY, w, 20, PAL.ground);
+  paint(x, GY, w, 2, PAL.groundLite);
+  paint(x, GY + 2, w, 1, PAL.groundDark);
+  for (let by = GY + 3; by < GY + 20; by += 5) {
+    paint(x, by + 4, w, 1, PAL.groundDark);
+    const shift = ((by - GY - 3) / 5) % 2 === 0 ? 0 : 5;
+    for (let bx = x + shift; bx < x + w; bx += 10) paint(bx, by, 1, 4, PAL.groundDark);
+  }
+}
+
+groundRun(0, 96);
+groundRun(122, 38);
 paint(98, GY + 9, 22, 4, PAL.prodDark);
 for (let i = 0; i < 22; i += 4) paint(98 + i, GY + 7, 2, 3, PAL.prod);
 
-// платформа над провалом
-paint(100, 54, 20, 4, PAL.brick);
-paint(100, 54, 20, 2, PAL.brickTop);
+drawBlock(paint, "brick", 42, 44, false, 0);
+drawBlock(paint, "question", 54, 44, false, 0);
+drawBlock(paint, "brick", 66, 44, false, 0);
+drawItem(paint, "offer", 55, 33);
 
-// герой в прыжке над легаси
-drawFoe(paint, "legacy", 62, GY - 9);
-drawDev(paint, 44, 40, { face: 1, walking: false, airborne: true, stride: false });
+drawFoe(paint, "legacy", 84, GY - 9);
+drawDev(paint, 30, 40, { face: 1, walking: false, airborne: true, stride: false, grade: 2 });
 
-drawGem(paint, 30, 50);
+drawGem(paint, 16, 50);
 drawGem(paint, 108, 42);
-drawCoffee(paint, 78, 48);
 drawCheckpoint(paint, 138, GY, true);
 
-// надпись
-word("ПУТЬ", 10, 10, PAL.gem, "#3A2A08");
-word("ДЖУНА", 10, 20, PAL.gem, "#3A2A08");
+word("ПУТЬ", 10, 10, PAL.gem, "#5A3418");
+word("ДЖУНА", 10, 20, PAL.gem, "#5A3418");
 
 // ── масштаб и кодирование PNG ──
 const W = LW * SCALE;
