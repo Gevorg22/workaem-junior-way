@@ -2,7 +2,7 @@ import "./style.css";
 import { LEVELS } from "./game/levels";
 import { PAL } from "./game/palette";
 import { Renderer } from "./game/render";
-import { TUNING as T } from "./game/tuning";
+import { TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
 import { World } from "./game/world";
 import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
@@ -18,8 +18,35 @@ function need<E extends Element>(selector: string): E {
 }
 
 const canvas = need<HTMLCanvasElement>("#stage");
-canvas.width = T.viewW * T.scale;
-canvas.height = T.viewH * T.scale;
+
+/** Меньшую долю экрана игра занимать не должна - иначе не разглядеть. */
+const MIN_SCREEN_SHARE = 0.25;
+
+/**
+ * Подгоняем ширину кадра под экран.
+ *
+ * Игру открывают из чата одной рукой, в портретной ориентации - требовать
+ * повернуть телефон значит терять людей на входе. Вместо этого сужаем кадр:
+ * полоска становится выше, спрайты крупнее, играть можно как есть.
+ *
+ * Нижняя граница не даёт увлечься: при слишком узком кадре игрок перестаёт
+ * успевать реагировать на врага, выехавшего из-за края.
+ */
+function fitViewport(): void {
+  // Холст растягивается на ширину рамки, а она ограничена 880px в стилях.
+  const frameWidth = Math.min(window.innerWidth - 20, 880);
+  const screenHeight = Math.max(window.innerHeight, 1);
+
+  // Высота холста жёстко следует из ширины: höhe = ширина / (w/h).
+  // Отсюда обратная задача - какой ширины кадр даст нужную долю экрана.
+  const widest = (frameWidth * VIEW.h) / (MIN_SCREEN_SHARE * screenHeight);
+
+  VIEW.w = Math.round(Math.max(VIEW_W_MIN, Math.min(VIEW_W_MAX, widest)));
+  canvas.width = VIEW.w * T.scale;
+  canvas.height = VIEW.h * T.scale;
+}
+
+fitViewport();
 
 const hud = {
   level: need<HTMLElement>("#hud-level"),
@@ -129,6 +156,13 @@ function frame(): void {
 
 syncHud();
 canvas.addEventListener("pointerdown", () => canvas.focus());
+
+// Поворот телефона меняет пропорции - пересчитываем кадр.
+// orientationchange приходит до того, как размеры обновятся, поэтому resize.
+window.addEventListener("resize", () => {
+  fitViewport();
+  renderer.resized();
+});
 if (!isTelegram()) document.body.dataset["standalone"] = "true";
 console.info(
   `Путь джуна · уровней: ${LEVELS.length} · среда: ${isTelegram() ? "Telegram Mini App" : "браузер"}`,

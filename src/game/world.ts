@@ -1,5 +1,5 @@
 import { levelAt, LEVELS } from "./levels";
-import { TUNING as T } from "./tuning";
+import { TUNING as T, VIEW } from "./tuning";
 import { PAL } from "./palette";
 import type { Foe, LevelSpec, Particle, Phase, Pickup, Player, Rect, RunStats } from "./types";
 
@@ -156,7 +156,7 @@ export class World {
     // на длинной карте откат в начало обесценивает всё пройденное.
     const x = this.checkpointX;
     this.player = { ...this.player, x, y: lv.groundY - 16, vx: 0, vy: 0, hurt: 40, boost: 0 };
-    this.camera = Math.max(0, Math.min(lv.width - T.viewW, x - T.viewW / 2));
+    this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
 
@@ -228,7 +228,7 @@ export class World {
     }
     if (p.onGround || (wasGround && p.coyote === 0)) p.coyote = T.coyoteFrames;
 
-    if (p.y > T.viewH + 40) { this.respawn(); return; }
+    if (p.y > VIEW.h + 40) { this.respawn(); return; }
 
     for (const h of lv.hazards) {
       if (overlap(p, { ...h, y: h.y - 4 })) this.damage(h.x + h.w / 2);
@@ -301,9 +301,9 @@ export class World {
       this.emit("clear");
     }
 
-    const target = p.x - T.viewW / 2 + p.w / 2;
+    const target = p.x - VIEW.w / 2 + p.w / 2;
     this.camera += (target - this.camera) * T.cameraEase;
-    this.camera = Math.max(0, Math.min(lv.width - T.viewW, this.camera));
+    this.camera = Math.max(0, Math.min(lv.width - VIEW.w, this.camera));
 
     this.stats.score = this.score;
     this.stats.skills = this.skills;

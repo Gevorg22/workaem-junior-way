@@ -173,3 +173,22 @@ body[data-standalone="true"] .hint::after {
 }
 .brand:hover { color: var(--gold); }
 .brand:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
+
+/**
+ * Подсказка про поворот - только на узких экранах в портрете.
+ *
+ * Именно подсказка, а не блокировка: игру открывают из чата одной рукой,
+ * и требование повернуть телефон отсекло бы часть людей на входе.
+ * В портрете играть можно, просто в ландшафте крупнее.
+ */
+.rotate-hint {
+  display: none;
+  margin: 0;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+}
+
+@media (orientation: portrait) and (max-width: 560px) {
+  .rotate-hint { display: block; }
+}

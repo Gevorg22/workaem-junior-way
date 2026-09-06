@@ -1,6 +1,6 @@
 import { PAL } from "./palette";
 import { LEVELS } from "./levels";
-import { TUNING as T } from "./tuning";
+import { TUNING as T, VIEW } from "./tuning";
 import {
   drawCheckpoint, drawCoffee, drawDev, drawDoor,
   drawFoe, drawGem, drawProd, drawSquashed, drawSwamp,
@@ -36,7 +36,7 @@ export class Renderer {
       ? `${size}px 'Pixelify Sans', monospace`
       : `${size}px 'JetBrains Mono', monospace`;
     const w = this.ctx.measureText(str).width;
-    this.text(str, (T.viewW - w) / 2, y, color, size, display);
+    this.text(str, (VIEW.w - w) / 2, y, color, size, display);
   }
 
   draw(w: World): void {
@@ -62,7 +62,7 @@ export class Renderer {
     } else if (w.phase === "over") {
       this.banner("ВЫГОРАНИЕ", "начать заново", PAL.shirt);
     } else if (w.phase === "final") {
-      p(0, 0, T.viewW, T.viewH, "rgba(15,13,24,.92)");
+      p(0, 0, VIEW.w, VIEW.h, "rgba(15,13,24,.92)");
       this.centered("ОФФЕР ПОЛУЧЕН", 26, PAL.gem, 15, true);
       this.centered(`Лид Frontend · скиллов ${w.skills} · очков ${w.score}`, 42, PAL.door, 8);
       this.centered("340 вакансий на твой уровень - workaem.com", 56, PAL.text, 7);
@@ -71,19 +71,19 @@ export class Renderer {
   }
 
   private banner(title: string, sub: string, color: string): void {
-    this.paint(0, 0, T.viewW, T.viewH, "rgba(15,13,24,.86)");
-    this.centered(title, T.viewH / 2 - 4, color, 14, true);
-    this.centered(sub, T.viewH / 2 + 10, PAL.text, 7);
+    this.paint(0, 0, VIEW.w, VIEW.h, "rgba(15,13,24,.86)");
+    this.centered(title, VIEW.h / 2 - 4, color, 14, true);
+    this.centered(sub, VIEW.h / 2 + 10, PAL.text, 7);
   }
 
   private background(w: World): void {
     const p = this.paint;
     const lv = w.level;
-    p(0, 0, T.viewW, T.viewH, PAL.sky);
+    p(0, 0, VIEW.w, VIEW.h, PAL.sky);
 
     for (let c = 0; c < 7; c++) {
-      let cx = (c * 74 - w.camera * 0.12) % (T.viewW + 80);
-      if (cx < -60) cx += T.viewW + 80;
+      let cx = (c * 74 - w.camera * 0.12) % (VIEW.w + 80);
+      if (cx < -60) cx += VIEW.w + 80;
       const cy = 8 + ((c * 17) % 14);
       p(cx, cy, 14, 3, PAL.cloud);
       p(cx + 3, cy - 2, 9, 3, PAL.cloud);
@@ -178,15 +178,23 @@ export class Renderer {
     const ctx = this.ctx;
     const p = this.paint;
     const wx = Math.round(w.deadlineX ?? 0);
-    p(wx - 60, 0, 60, T.viewH, "rgba(208,48,74,.16)");
-    p(wx - 3, 0, 3, T.viewH, PAL.deadline);
-    for (let s = 0; s < T.viewH; s += 6) p(wx, s + (Math.floor(w.ticks / 3) % 6), 4, 3, PAL.deadline);
+    p(wx - 60, 0, 60, VIEW.h, "rgba(208,48,74,.16)");
+    p(wx - 3, 0, 3, VIEW.h, PAL.deadline);
+    for (let s = 0; s < VIEW.h; s += 6) p(wx, s + (Math.floor(w.ticks / 3) % 6), 4, 3, PAL.deadline);
 
     ctx.save();
-    ctx.translate(wx - 8, T.viewH / 2);
+    ctx.translate(wx - 8, VIEW.h / 2);
     ctx.rotate(-Math.PI / 2);
     this.text("ДЕДЛАЙН", -22, 0, PAL.deadline);
     ctx.restore();
+  }
+
+  /**
+   * Смена размера холста сбрасывает imageSmoothingEnabled - без повторной
+   * установки после поворота телефона картинка становится мыльной.
+   */
+  resized(): void {
+    this.ctx.imageSmoothingEnabled = false;
   }
 
   get element(): HTMLCanvasElement {
