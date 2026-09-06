@@ -8,17 +8,29 @@
 export const PAL = {
   sky: "#6BA8F5",
   skyHigh: "#8FC0FA",
+  /** Верх неба глубже, у горизонта светлее - так небо перестаёт быть плашкой. */
+  skyTop: "#3D7FD4",
+  skyHorizon: "#A9D2FB",
   cloud: "#FFFFFF",
   cloudShade: "#D8E6F8",
 
   hill: "#4E9E42",
   hillDark: "#2F7A30",
+  /** Освещённая сторона холма и дальняя гряда, выцветшая расстоянием. */
+  hillLite: "#6FBA57",
+  hillFar: "#6E9E7A",
+  hillFarDark: "#5A8768",
   bush: "#3E8C38",
 
   // Дальние офисные башни - айтишная замена горам на горизонте.
-  tower: "#7FA8D8",
-  towerDark: "#5F86B4",
-  towerWindow: "#C8E0F8",
+  tower: "#8FB6DE",
+  towerDark: "#7CA4CE",
+  towerWindow: "#B4D2EE",
+  /** Горящее окно: в офисной башне всегда кто-то сидит допоздна. */
+  towerWindowLit: "#EFD9A0",
+  towerRoof: "#6E96C0",
+  /** Воздушная перспектива: всё дальше башен уводится в лёгкую дымку. */
+  haze: "rgba(158,200,242,.22)",
 
   ground: "#C4762E",
   groundLite: "#E09A48",
@@ -49,6 +61,8 @@ export const PAL = {
   laptop: "#D8D8E8",
   eye: "#2B2438",
   headphones: "#2C2C3A",
+  /** Блик на наушниках: без него они сливались с волосами в тёмное пятно. */
+  headphonesLite: "#6E7A96",
 
   legacy: "#8A6A4A",
   legacyLite: "#A88A66",

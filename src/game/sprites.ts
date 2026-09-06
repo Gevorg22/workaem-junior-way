@@ -66,9 +66,16 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
 
   if (grade === 2) {
     // Наушники - самый быстрый способ показать сеньора одним силуэтом.
-    p(x, y - 2, 9, 2, PAL.headphones);
-    p(x - 1, y - 1, 2, 7, PAL.headphones);
-    p(x + 8, y - 1, 2, 7, PAL.headphones);
+    // Корпус светлый, обводка тёмная: тёмные наушники на тёмных волосах
+    // сливались в чёрный квадрат, и сеньор был неотличим от мидла.
+    p(x + 1, y - 3, 7, 2, PAL.headphonesLite);
+    p(x + 1, y - 3, 7, 1, PAL.headphones);
+    p(x - 1, y - 2, 3, 8, PAL.headphonesLite);
+    p(x + 7, y - 2, 3, 8, PAL.headphonesLite);
+    p(x - 1, y - 2, 1, 8, PAL.headphones);
+    p(x + 9, y - 2, 1, 8, PAL.headphones);
+    p(x - 1, y + 5, 3, 1, PAL.headphones);
+    p(x + 7, y + 5, 3, 1, PAL.headphones);
   }
 
   // Голова
@@ -106,36 +113,66 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
   p(laptopX, y + 12, 3, 1, PAL.door);
 }
 
+/**
+ * Враги. У каждого своя история, и она должна читаться силуэтом за долю
+ * секунды: коробка легаси, жук и окно созвона. Раньше все трое были плоскими
+ * заливками с парой точек - теперь у каждого фаска, лицо и своя походка.
+ *
+ * Низ спрайта обязан совпасть с нижней гранью хитбокса из FOE_SIZE, это
+ * сторожит check:sprites.
+ */
 export function drawFoe(p: Painter, kind: FoeKind, x: number, y: number, legFrame = false): void {
   if (kind === "legacy") {
+    // Заклеенная скотчем коробка: то самое наследство, которое никто не
+    // хочет открывать. Косой скотч крест-накрест и делает её узнаваемой.
     p(x, y, 12, 9, PAL.legacy);
-    p(x, y, 12, 2, PAL.legacyLite);
-    p(x, y + 9, 12, 1, PAL.legacyDark);
-    p(x + 2, y + 3, 2, 2, PAL.shirt);
-    p(x + 8, y + 3, 2, 2, PAL.shirt);
+    p(x, y, 12, 1, PAL.legacyLite);
+    p(x, y, 1, 9, PAL.legacyLite);
+    p(x + 11, y, 1, 9, PAL.legacyDark);
+    p(x, y + 8, 12, 1, PAL.legacyDark);
+    p(x + 5, y + 1, 1, 7, PAL.legacyLite);
+
+    p(x + 2, y + 3, 3, 2, PAL.headphones);
+    p(x + 7, y + 3, 3, 2, PAL.headphones);
+    p(x + 3, y + 3, 1, 1, PAL.shirt);
+    p(x + 8, y + 3, 1, 1, PAL.shirt);
     p(x + 3, y + 6, 6, 1, PAL.legacyDark);
-    p(x + 5, y + 2, 1, 5, PAL.legacyDark);
+
+    // Ножки переступают: раньше коробка ехала по земле не шевелясь.
+    p(x + (legFrame ? 1 : 2), y + 9, 3, 1, PAL.legacyDark);
+    p(x + (legFrame ? 8 : 7), y + 9, 3, 1, PAL.legacyDark);
     return;
   }
+
   if (kind === "bug") {
+    // Жук: панцирь со швом, усики и лапы вразнобой.
+    p(x + 1, y, 1, 1, PAL.bugDark);
+    p(x + 7, y, 1, 1, PAL.bugDark);
     p(x + 1, y + 1, 7, 5, PAL.bug);
-    p(x + 1, y + 1, 7, 1, PAL.bugLite);
+    p(x + 2, y + 1, 5, 1, PAL.bugLite);
     p(x, y + 3, 1, 2, PAL.bugDark);
     p(x + 8, y + 3, 1, 2, PAL.bugDark);
+    p(x + 4, y + 2, 1, 4, PAL.bugDark);
     p(x + 2, y + 2, 1, 1, PAL.eye);
     p(x + 6, y + 2, 1, 1, PAL.eye);
-    p(x + 1, y + 6, 2, legFrame ? 1 : 2, PAL.bugDark);
-    p(x + 6, y + 6, 2, legFrame ? 2 : 1, PAL.bugDark);
+    p(x, y + 6, 2, legFrame ? 2 : 1, PAL.bugDark);
+    p(x + 7, y + 6, 2, legFrame ? 1 : 2, PAL.bugDark);
     return;
   }
-  // Созвон: два глаза-квадрата, растоптать нельзя.
+
+  // Созвон - окно видеозвонка: полоса заголовка с кнопками и лицо внутри.
+  // Растоптать нельзя, поэтому силуэт нарочно не похож на остальных.
   p(x, y + 1, 13, 8, PAL.call);
-  p(x, y + 1, 13, 1, PAL.callLite);
+  p(x, y + 1, 13, 2, PAL.callLite);
+  p(x + 1, y + 1, 1, 1, PAL.text);
+  p(x + 3, y + 1, 1, 1, PAL.text);
+  p(x, y + 1, 1, 8, PAL.callLite);
+  p(x + 12, y + 1, 1, 8, PAL.callDark);
   p(x + 1, y + 9, 11, 1, PAL.callDark);
-  p(x + 2, y + 3, 3, 3, PAL.eye);
-  p(x + 8, y + 3, 3, 3, PAL.eye);
-  p(x + 3, y + 4, 1, 1, PAL.text);
-  p(x + 9, y + 4, 1, 1, PAL.text);
+  p(x + 2, y + 4, 3, 3, PAL.eye);
+  p(x + 8, y + 4, 3, 3, PAL.eye);
+  p(x + 3, y + 5, 1, 1, PAL.text);
+  p(x + 9, y + 5, 1, 1, PAL.text);
   p(x + 5, y + 7, 3, 1, PAL.callDark);
 }
 

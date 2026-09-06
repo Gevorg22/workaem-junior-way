@@ -86,12 +86,38 @@ export class Renderer {
     return w.level.theme === "underground" ? UNDERGROUND[key] : PAL[key];
   }
 
+  /**
+   * Смешивает два цвета. Нужен для неба: держать в палитре полтора десятка
+   * оттенков одного градиента бессмысленно, их проще посчитать.
+   */
+  private static mix(a: string, b: string, t: number): string {
+    const hex = (c: string, i: number): number => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16);
+    const ch = (i: number): number => Math.round(hex(a, i) + (hex(b, i) - hex(a, i)) * t);
+    return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+  }
+
   private background(w: World): void {
     const p = this.paint;
     const lv = w.level;
 
     p(0, 0, VIEW.w, VIEW.h, this.tone(w, "sky"));
-    p(0, 0, VIEW.w, 18, this.tone(w, "skyHigh"));
+    if (lv.theme === "underground") {
+      p(0, 0, VIEW.w, 18, this.tone(w, "skyHigh"));
+    } else {
+      // Небо полосами от глубокого верха к светлому горизонту. Раньше полос
+      // было две, и стык между ними резал кадр пополам заметной линией.
+      const bands = 14;
+      const bandH = Math.ceil(lv.groundY / bands);
+      for (let i = 0; i < bands; i++) {
+        p(0, i * bandH, VIEW.w, bandH, Renderer.mix(PAL.skyTop, PAL.skyHorizon, i / (bands - 1)));
+      }
+    }
+
+    // Земля толщиной 15, а кадр 112: под ней оставался просвет неба,
+    // и низ экрана выглядел так, будто мир висит в воздухе.
+    if (lv.theme !== "underground") {
+      p(0, lv.groundY + 15, VIEW.w, VIEW.h - lv.groundY - 15, PAL.groundEdge);
+    }
 
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
     // создаёт то самое ощущение тесноты, ради которого всё затевалось.
@@ -107,25 +133,63 @@ export class Renderer {
       return;
     }
 
-    for (let i = 0; i < 8; i++) {
-      const bx = i * 64 - ((w.camera * 0.3) % 64);
-      const bh = 22 + ((i * 29) % 16);
-      p(bx, lv.groundY - bh, 20, bh, i % 2 ? PAL.tower : PAL.towerDark);
-      for (let row = 0; row < Math.floor(bh / 6); row++) {
-        p(bx + 3, lv.groundY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
-        p(bx + 12, lv.groundY - bh + 4 + row * 6, 3, 3, PAL.towerWindow);
-      }
-    }
-
     for (let c = 0; c < 6; c++) {
       let cx = (c * 86 - w.camera * 0.14) % (VIEW.w + 100);
       if (cx < -70) cx += VIEW.w + 100;
       const cy = 6 + ((c * 19) % 12);
-      p(cx + 4, cy, 16, 4, PAL.cloud);
-      p(cx, cy + 3, 24, 5, PAL.cloud);
-      p(cx + 7, cy - 3, 10, 4, PAL.cloud);
-      p(cx, cy + 7, 24, 1, PAL.cloudShade);
+      // Три размера облаков вместо одного - небо перестаёт быть штампованным.
+      const size = c % 3;
+      const cw = 16 + size * 5;
+      p(cx + 4, cy, cw, 4, PAL.cloud);
+      p(cx, cy + 3, cw + 8, 5, PAL.cloud);
+      p(cx + 7, cy - 3, cw - 6, 4, PAL.cloud);
+      if (size === 2) p(cx + cw, cy - 1, 6, 4, PAL.cloud);
+      p(cx, cy + 7, cw + 8, 1, PAL.cloudShade);
     }
+
+    // Дальняя гряда: выцветшая расстоянием и почти неподвижная. Она не
+    // читается сама по себе, но без неё горизонт упирается в плоскую заливку.
+    for (let i = 0; i < 8; i++) {
+      const fx = i * 118 - ((w.camera * 0.16) % 118);
+      const fh = 26 + ((i * 37) % 12);
+      const fw = 70 + ((i * 53) % 30);
+      for (let step = 0; step < fh; step += 2) {
+        const inset = Math.round((1 - step / fh) * (fw / 2 - 4));
+        p(fx + inset, lv.groundY - fh + step, fw - inset * 2, 2, PAL.hillFar);
+      }
+      p(fx + fw / 2 - 2, lv.groundY - fh + 2, 4, 3, PAL.hillFarDark);
+    }
+
+    // Офисные башни. Ширина, высота и горящие окна пляшут от индекса:
+    // одинаковые дома читаются как обои, а не как город.
+    for (let i = 0; i < 10; i++) {
+      const bx = i * 52 - ((w.camera * 0.3) % 52);
+      const bh = 22 + ((i * 29) % 20);
+      const bw = 16 + ((i * 13) % 12);
+      const dark = i % 2 === 1;
+      p(bx, lv.groundY - bh, bw, bh, dark ? PAL.towerDark : PAL.tower);
+      // Кромка крыши: без неё башня сливается с небом.
+      p(bx, lv.groundY - bh, bw, 2, PAL.towerRoof);
+      // Тень по правой грани даёт объём одной полосой.
+      p(bx + bw - 2, lv.groundY - bh + 2, 2, bh - 2, PAL.towerRoof);
+
+      const cols = Math.max(2, Math.floor((bw - 6) / 6));
+      for (let row = 0; row < Math.floor((bh - 6) / 6); row++) {
+        for (let col = 0; col < cols; col++) {
+          // Псевдослучайно, но от координат: при прокрутке окна не мигают.
+          const lit = ((i * 7 + row * 13 + col * 29) % 11) < 3;
+          p(
+            bx + 3 + col * 6, lv.groundY - bh + 5 + row * 6, 3, 3,
+            lit ? PAL.towerWindowLit : PAL.towerWindow,
+          );
+        }
+      }
+    }
+
+    // Воздушная перспектива. Всё, что нарисовано выше - небо, дальняя гряда,
+    // город - уходит в дымку, и передний план сам собой выступает вперёд.
+    // Без неё башни спорили по контрасту с игроком и тянули взгляд на себя.
+    p(0, 0, VIEW.w, lv.groundY, PAL.haze);
 
     // Холмы: ступенчатая пирамида читается как округлый холм.
     for (let i = 0; i < 10; i++) {
@@ -137,18 +201,28 @@ export class Renderer {
         // step идёт сверху вниз, поэтому сужение считаем от обратного:
         // иначе холм получается перевёрнутым.
         const inset = Math.round((1 - step / hh) * (hw / 2 - 3));
-        p(hx + inset, lv.groundY - hh + step, hw - inset * 2, 2, PAL.hill);
+        const y = lv.groundY - hh + step;
+        const width = hw - inset * 2;
+        p(hx + inset, y, width, 2, PAL.hill);
+        // Солнце слева: светлая грань по левому склону, тень по правому.
+        p(hx + inset, y, Math.max(2, Math.round(width / 3)), 2, PAL.hillLite);
+        p(hx + inset + width - 3, y, 3, 2, PAL.hillDark);
       }
-      p(hx + hw / 2 - 4, lv.groundY - hh + 4, 3, 2, PAL.hillDark);
-      p(hx + hw / 2 + 2, lv.groundY - hh + 7, 3, 2, PAL.hillDark);
+      p(hx + hw / 2 - 4, lv.groundY - hh + 6, 3, 2, PAL.hillDark);
+      p(hx + hw / 2 + 2, lv.groundY - hh + 9, 3, 2, PAL.hillDark);
     }
 
     // Кусты вдоль земли - тот же силуэт, что у облаков, только зелёный.
-    for (let b = 0; b < 12; b++) {
-      const bx = b * 78 - ((w.camera * 0.7) % 78);
-      p(bx + 3, lv.groundY - 5, 14, 5, PAL.bush);
-      p(bx, lv.groundY - 3, 20, 3, PAL.bush);
-      p(bx + 7, lv.groundY - 8, 7, 4, PAL.bush);
+    // Размер и шаг пляшут от индекса: ровный ряд одинаковых кустов выдаёт
+    // повтор сильнее, чем любая другая деталь фона.
+    for (let b = 0; b < 14; b++) {
+      const bx = b * 61 + ((b * 23) % 17) - ((w.camera * 0.7) % 61);
+      const big = b % 3 === 0;
+      const bw = big ? 20 : 13;
+      p(bx + 3, lv.groundY - (big ? 5 : 4), bw - 6, big ? 5 : 4, PAL.bush);
+      p(bx, lv.groundY - 3, bw, 3, PAL.bush);
+      if (big) p(bx + 7, lv.groundY - 8, 7, 4, PAL.bush);
+      p(bx, lv.groundY - 1, bw, 1, PAL.hillDark);
     }
   }
 
@@ -163,15 +237,57 @@ export class Renderer {
       p(pl.x, pl.y, pl.w, pl.h, solid ? this.tone(w, "ground") : this.tone(w, "brick"));
       p(pl.x, pl.y, pl.w, 2, solid ? this.tone(w, "groundLite") : this.tone(w, "brickLite"));
       p(pl.x, pl.y + 2, pl.w, 1, solid ? this.tone(w, "groundDark") : this.tone(w, "brickDark"));
-      if (solid) {
-        // Кладка вразбежку: ряды со смещением на полкирпича.
-        const dark = this.tone(w, "groundDark");
-        for (let by = pl.y + 3; by < pl.y + pl.h; by += 5) {
-          p(pl.x, by + 4, pl.w, 1, dark);
-          const shift = ((by - pl.y) / 5) % 2 === 0 ? 0 : 5;
-          for (let bx = pl.x + shift; bx < pl.x + pl.w; bx += 10) p(bx, by, 1, 4, dark);
+
+      if (!solid) {
+        // Балка была плоской плашкой. Торцы и заклёпки дают ей толщину, а
+        // тень по низу отрывает её от фона - иначе она читается наклейкой.
+        const bd = this.tone(w, "brickDark");
+        p(pl.x, pl.y, 1, pl.h, bd);
+        p(pl.x + pl.w - 1, pl.y, 1, pl.h, bd);
+        p(pl.x, pl.y + pl.h - 1, pl.w, 1, this.tone(w, "brickEdge"));
+        for (let bx = pl.x + 3; bx < pl.x + pl.w - 3; bx += 8) {
+          p(bx, pl.y + 1, 1, 1, this.tone(w, "brickTop"));
+          p(bx, pl.y + pl.h - 2, 1, 1, bd);
         }
-        p(pl.x, pl.y + pl.h - 1, pl.w, 1, this.tone(w, "groundEdge"));
+      }
+      if (solid) {
+        // Кладка вразбежку. Раньше швы были сплошными линиями во всю ширину,
+        // и земля читалась дощатым забором. Кирпич кладётся объёмным: светлая
+        // фаска сверху и слева, тёмная снизу и справа - тогда виден рельеф,
+        // а не сетка.
+        const dark = this.tone(w, "groundDark");
+        const lite = this.tone(w, "groundLite");
+        const edge = this.tone(w, "groundEdge");
+        const BRICK_W = 12;
+        const BRICK_H = 6;
+
+        for (let row = 0; pl.y + 3 + row * BRICK_H < pl.y + pl.h; row++) {
+          const by = pl.y + 3 + row * BRICK_H;
+          const h = Math.min(BRICK_H, pl.y + pl.h - by);
+          if (h < 2) break;
+          // Смещение считаем от абсолютного x, а не от края куска: иначе
+          // два соседних куска пола стыкуются со сбитым рисунком.
+          const shift = row % 2 === 0 ? 0 : BRICK_W / 2;
+          const first = Math.floor((pl.x - shift) / BRICK_W) * BRICK_W + shift;
+          for (let bx = first; bx < pl.x + pl.w; bx += BRICK_W) {
+            const x0 = Math.max(bx, pl.x);
+            const x1 = Math.min(bx + BRICK_W - 1, pl.x + pl.w);
+            if (x1 <= x0) continue;
+            p(x0, by, x1 - x0, h - 1, this.tone(w, "ground"));
+            p(x0, by, x1 - x0, 1, lite);
+            if (bx >= pl.x) p(x0, by, 1, h - 1, lite);
+            p(x0, by + h - 1, x1 - x0, 1, dark);
+            if (x1 < pl.x + pl.w) p(x1 - 1, by, 1, h, dark);
+          }
+        }
+
+        // Крапины: без них большая заливка выглядит пластиковой. Считаются
+        // от абсолютного x, поэтому при прокрутке узор стоит на месте.
+        for (let bx = pl.x + 2; bx < pl.x + pl.w - 2; bx += 5) {
+          const n = (bx * 7919) % 29;
+          if (n < 4) p(bx, pl.y + 5 + (n % 3) * 4, 1, 1, edge);
+        }
+        p(pl.x, pl.y + pl.h - 1, pl.w, 1, edge);
       }
     }
 

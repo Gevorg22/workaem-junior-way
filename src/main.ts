@@ -260,6 +260,14 @@ window.addEventListener("resize", () => {
   renderer.resized();
 });
 if (!isTelegram()) document.body.dataset["standalone"] = "true";
+// Внутри Telegram звать в Telegram незачем - там уже играют оттуда.
+if (isTelegram()) {
+  const tgLink = document.querySelector<HTMLElement>("#tg-link");
+  if (tgLink) {
+    tgLink.hidden = true;
+    tgLink.previousElementSibling?.setAttribute("hidden", "");
+  }
+}
 console.info(
   `Путь джуна · уровней: ${LEVELS.length} · темп: ${TICKS_PER_SECOND} шагов/с · среда: ${isTelegram() ? "Telegram Mini App" : "браузер"}`,
 );
