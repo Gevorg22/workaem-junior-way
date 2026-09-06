@@ -109,6 +109,14 @@ export class World {
   }
 
   newRun(): void {
+    // Грейд обнуляем явно. loadLevel переносит его из текущего игрока, а
+    // respawn при последней жизни выходит по return ДО пересборки игрока -
+    // поэтому после «Выгорания» новый забег начинался сеньором, ростом 22
+    // и с кнопкой броска, хотя надпись обещала начать заново.
+    if (this.player) {
+      this.player.grade = 0;
+      this.player.h = PLAYER_H_SMALL;
+    }
     this.lives = T.startLives;
     this.score = 0;
     this.skills = 0;
@@ -299,7 +307,9 @@ export class World {
         this.questions = [];
         this.score += T.scoreBoss;
         this.shake = T.shakeFrames;
-        this.burst(b.x + b.w / 2, b.y + b.h / 2, PAL.gemLite, 26);
+        // Босс к этому моменту уже уехал вниз за кромку кадра, и салют
+        // рождался под экраном - победу было не видно. Держим его в кадре.
+        this.burst(b.x + b.w / 2, Math.min(b.y + b.h / 2, VIEW.h - 24), PAL.gemLite, 26);
       }
       return;
     }
@@ -325,7 +335,10 @@ export class World {
     b.vy = Math.min(b.vy + T.gravity, T.maxFall);
     b.y += b.vy;
     if (b.y + b.h >= b.baseY) {
-      if (b.vy > 1) this.shake = 6;
+      // Трясти экран, когда босс за три экрана отсюда, - значит пугать
+      // игрока невидимкой. Трясём, только если он в кадре.
+      const onScreen = b.x + b.w > this.camera && b.x < this.camera + VIEW.w;
+      if (b.vy > 1 && onScreen) this.shake = 6;
       b.y = b.baseY - b.h;
       b.vy = 0;
     }
@@ -493,6 +506,24 @@ export class World {
     const p = this.player;
     const lv = this.level;
 
+    // Счётчики тикают ДО развилки с трубой. Раньше и кадры проезда, и кадр
+    // входа уходили по return мимо них: ныряя в трубу раз в 45 кадров, можно
+    // было держать отпуск, кофе и неуязвимость вечно, а стена дедлайна вообще
+    // переставала двигаться - мир замирал, пока игрок катался.
+    if (p.coyote > 0) p.coyote -= 1;
+    if (p.buffer > 0) p.buffer -= 1;
+    if (p.hurt > 0) p.hurt -= 1;
+    if (p.boost > 0) p.boost -= 1;
+    if (p.vacation > 0) p.vacation -= 1;
+    if (p.cooldown > 0) p.cooldown -= 1;
+
+    // Стена дедлайна идёт своим ходом и во время проезда: иначе труба
+    // превращалась в кнопку «поставить игру на паузу».
+    if (this.warp && this.deadlineX !== null) {
+      this.deadlineX += lv.deadlineSpeed;
+      if (p.x < this.deadlineX + 8) { this.respawn(); return; }
+    }
+
     // Проезд по трубе идёт мимо всей остальной физики.
     if (this.warp) {
       const wp = this.warp;
@@ -533,6 +564,9 @@ export class World {
       const to = from && lv.pipes.find((pipe) => pipe.x === from.link);
       if (from && to) {
         this.warp = { t: 0, from, to };
+        // Буфер прыжка обнуляем: иначе набитый перед нырянием прыжок
+        // срабатывал сам на выходе из парной трубы.
+        p.buffer = 0;
         this.stats.pipes += 1;
         this.emit("pipe");
         return;
@@ -549,13 +583,6 @@ export class World {
     if (input.right) { p.vx += T.accel; p.face = 1; }
     if (!input.left && !input.right) p.vx *= T.friction;
     p.vx = Math.max(-maxSpeed, Math.min(maxSpeed, p.vx));
-
-    if (p.coyote > 0) p.coyote -= 1;
-    if (p.buffer > 0) p.buffer -= 1;
-    if (p.hurt > 0) p.hurt -= 1;
-    if (p.boost > 0) p.boost -= 1;
-    if (p.vacation > 0) p.vacation -= 1;
-    if (p.cooldown > 0) p.cooldown -= 1;
 
     // Бросок теста доступен только сеньору - в этом и смысл третьей ступени.
     if (input.throw && p.grade === 2 && p.cooldown === 0) {

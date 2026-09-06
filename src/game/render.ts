@@ -170,17 +170,8 @@ export class Renderer {
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
     // создаёт то самое ощущение тесноты, ради которого всё затевалось.
     if (lv.theme === "underground") {
-      const c = UNDERGROUND;
       // Потолок: градиент вниз, мягкие швы кладки и капли-сталактиты.
-      p.grad(0, 0, VIEW.w, 11, c.groundLite, c.ground);
-      p.round(0, 9, VIEW.w, 2, 0.8, c.groundDark);
-      for (let x = 0; x < VIEW.w; x += 12) {
-        p.round(x - ((w.camera * 0.5) % 12), 0, 0.8, 9, 0.4, c.groundEdge);
-      }
-      for (let i = 0; i < 10; i++) {
-        const gx = i * 46 - ((w.camera * 0.5) % 46);
-        p.oval(gx + 4, 11, 4.4, 3.2, c.groundDark);
-      }
+      this.ceiling(w);
       // Своды в глубине: намёк на объём, иначе за потолком пустая плашка.
       for (let i = 0; i < 8; i++) {
         const ax = i * 84 - ((w.camera * 0.22) % 84);
@@ -399,7 +390,22 @@ export class Renderer {
       p.circle(q.x + 1, q.y + 1, 0.5 + k * 1.1, q.color);
     }
 
-    if (w.phase === "play" || w.phase === "clear") this.player(w);
+    if (w.phase === "play" || w.phase === "clear") {
+      if (w.warp) {
+        // Во время ныряния игрок уходит НИЖЕ кромки земли, а земля нарисована
+        // раньше него - штанины и ботинки торчали из-под трубы поверх пола.
+        // Обрезаем его по низу трубы: ниже он просто не рисуется.
+        const floor = Math.max(w.warp.from.y + w.warp.from.h, w.warp.to.y + w.warp.to.h);
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(0, -40, lv.width, floor + 40);
+        this.ctx.clip();
+        this.player(w);
+        this.ctx.restore();
+      } else {
+        this.player(w);
+      }
+    }
     // Пока едем по трубе, она рисуется поверх - игрок скрывается в жерле.
     if (w.warp) {
       for (const pipe of lv.pipes) {
@@ -407,7 +413,28 @@ export class Renderer {
       }
     }
 
+    // Каменный потолок дорисовывается ПОВЕРХ всего. Он нарисован в экранных
+    // координатах и столкновения не имеет: игрок, прыгнув с верхней ступени
+    // перед дверью, оказывался нарисован поверх камня и будто пролетал
+    // сквозь свод. Теперь он уходит ЗА камень - так это и читается.
+    if (lv.theme === "underground") this.ceiling(w);
+
     if (w.deadlineX !== null) this.deadline(w);
+  }
+
+  /** Свод подземелья. Рисуется дважды: в фоне и поверх всего. */
+  private ceiling(w: World): void {
+    const p = this.paint;
+    const c = UNDERGROUND;
+    p.grad(0, 0, VIEW.w, 11, c.groundLite, c.ground);
+    p.round(0, 9, VIEW.w, 2, 0.8, c.groundDark);
+    for (let x = 0; x < VIEW.w; x += 12) {
+      p.round(x - ((w.camera * 0.5) % 12), 0, 0.8, 9, 0.4, c.groundEdge);
+    }
+    for (let i = 0; i < 10; i++) {
+      const gx = i * 46 - ((w.camera * 0.5) % 46);
+      p.oval(gx + 4, 11, 4.4, 3.2, c.groundDark);
+    }
   }
 
   private player(w: World): void {

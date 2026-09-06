@@ -199,6 +199,29 @@ body[data-standalone="true"] .hint::after {
   font-size: 15px;
 }
 
+/*
+ * Узкий экран. Пять кнопок с фиксированной шириной не помещаются в 320px:
+ * ряд разъезжался, и кнопка звука срезалась до пары пикселей - выключить
+ * звук пальцем было нельзя. Поэтому на узких экранах кнопки делят
+ * доступную ширину поровну вместо жёсткого минимума.
+ */
+@media (max-width: 460px) {
+  .pad { gap: 6px; padding: 8px 6px; }
+  .pad-side { gap: 5px; flex: 1 1 0; }
+  .pad button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    font-size: 17px;
+  }
+  .pad button.sound,
+  .pad button.down {
+    flex: 0 1 34px;
+    min-width: 0;
+    font-size: 14px;
+  }
+}
+
 /* Спуск в трубу нужен изредка - кнопка уже ходовых, чтобы не мешала. */
 .pad button.down {
   min-width: 44px;
