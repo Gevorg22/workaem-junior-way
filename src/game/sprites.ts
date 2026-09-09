@@ -41,6 +41,35 @@ export interface Painter {
  * Кисть поверх контекста. Координаты НЕ округляются - именно округление
  * раньше загоняло всё в крупную сетку и делало пиксели видимыми.
  */
+/**
+ * Скруглённый прямоугольник в текущий путь.
+ *
+ * `ctx.roundRect` появился в Safari только в 16.4, и на iPhone, который не
+ * обновляли, его просто нет: первый же кадр падал с TypeError, а игрок
+ * видел чёрный экран. Всей графике игры скругления нужны постоянно,
+ * поэтому при отсутствии встроенного метода рисуем дугами сами.
+ */
+function roundPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, w, h, rr);
+    return;
+  }
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 export function canvasBrush(ctx: CanvasRenderingContext2D): Painter {
   const brush = ((x: number, y: number, w: number, h: number, color: string): void => {
     ctx.fillStyle = color;
@@ -55,8 +84,7 @@ export function canvasBrush(ctx: CanvasRenderingContext2D): Painter {
   };
 
   brush.round = (x, y, w, h, r, color) => {
-    const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
-    path(color, () => ctx.roundRect(x, y, w, h, rr));
+    path(color, () => roundPath(ctx, x, y, w, h, r));
   };
 
   brush.circle = (cx, cy, r, color) => {
@@ -74,7 +102,7 @@ export function canvasBrush(ctx: CanvasRenderingContext2D): Painter {
     ctx.fillStyle = g;
     if (r > 0) {
       ctx.beginPath();
-      ctx.roundRect(x, y, w, h, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2));
+      roundPath(ctx, x, y, w, h, r);
       ctx.fill();
     } else {
       ctx.fillRect(x, y, w, h);
