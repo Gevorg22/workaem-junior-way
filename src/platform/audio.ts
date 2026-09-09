@@ -6,7 +6,7 @@
  * дают ровно ту восьмибитную эстетику, которая тут уместна.
  */
 
-type Sound = "jump" | "stomp" | "coin" | "coffee" | "hurt" | "checkpoint" | "clear" | "over" | "pipe" | "bossHit" | "bossDown";
+type Sound = "jump" | "stomp" | "coin" | "coffee" | "hurt" | "checkpoint" | "clear" | "over" | "pipe" | "bossHit" | "bossDown" | "life" | "pole";
 
 const STORAGE_KEY = "junior-way:muted";
 
@@ -121,6 +121,18 @@ const PATTERNS: Record<Sound, Note[]> = {
     { freq: 440, at: 0.07, dur: 0.08 },
     { freq: 294, at: 0.14, dur: 0.16, type: "triangle" },
   ],
+  // Жизнь: две восходящие кварты подряд - интонация «стало больше».
+  life: [
+    { freq: 784, at: 0, dur: 0.08 },
+    { freq: 1047, at: 0.08, dur: 0.08 },
+    { freq: 1319, at: 0.16, dur: 0.08 },
+    { freq: 1568, at: 0.24, dur: 0.2, type: "triangle" },
+  ],
+  // Захват флагштока: скользящий вниз тон, как спуск по шесту.
+  pole: [
+    { freq: 1200, at: 0, dur: 0.34, slideTo: 300, type: "triangle" },
+    { freq: 600, at: 0.3, dur: 0.16 },
+  ],
   clear: [
     { freq: 523, at: 0, dur: 0.1 },
     { freq: 659, at: 0.1, dur: 0.1 },
@@ -178,6 +190,26 @@ const TUNES = {
       41, 0, 53, 0, 43, 0, 55, 0, 40, 0, 52, 0, 40, 0, 0, 0,
     ],
   },
+  /**
+   * Отпуск. Половина ценности неуязвимости в классике - в том, что музыка
+   * меняется: слышно, что правила на несколько секунд другие. Тема быстрая,
+   * без пауз и на одной гармонии - она и должна звучать как угар, а не
+   * как мелодия.
+   */
+  vacation: {
+    lead: [
+      88, 84, 81, 84, 88, 84, 81, 84, 86, 83, 79, 83, 86, 83, 79, 83,
+      88, 84, 81, 84, 88, 84, 81, 84, 89, 86, 83, 86, 89, 86, 83, 86,
+      88, 84, 81, 84, 88, 84, 81, 84, 86, 83, 79, 83, 86, 83, 79, 83,
+      91, 88, 84, 88, 91, 88, 84, 88, 88, 84, 81, 76, 81, 84, 88, 84,
+    ],
+    bass: [
+      52, 0, 52, 0, 52, 0, 52, 0, 50, 0, 50, 0, 50, 0, 50, 0,
+      52, 0, 52, 0, 52, 0, 52, 0, 53, 0, 53, 0, 53, 0, 53, 0,
+      52, 0, 52, 0, 52, 0, 52, 0, 50, 0, 50, 0, 50, 0, 50, 0,
+      55, 0, 55, 0, 55, 0, 55, 0, 52, 0, 52, 0, 52, 0, 52, 0,
+    ],
+  },
   underground: {
     lead: [
       64, 0, 0, 67, 0, 0, 71, 0, 69, 0, 0, 67, 0, 0, 0, 0,
@@ -199,6 +231,17 @@ export type Tune = keyof typeof TUNES;
 /** Длительность шага. 0.135 с - примерно 111 ударов в минуту. */
 const STEP = 0.135;
 const LOOKAHEAD = 0.12;
+
+/**
+ * Множитель темпа. Меньше единицы - быстрее: на последних секундах уровня
+ * тема разгоняется, и это единственная подсказка, которая работает, даже
+ * когда человек смотрит на врага, а не на таймер.
+ */
+let tempo = 1;
+
+export function setHurry(on: boolean): void {
+  tempo = on ? 0.78 : 1;
+}
 
 let musicGain: GainNode | null = null;
 let musicTimer: number | null = null;
@@ -249,11 +292,12 @@ function schedule(): void {
       const i = step % tune.lead.length;
       const lead = tune.lead[i] ?? REST;
       const bass = tune.bass[i] ?? REST;
-      if (lead !== REST) voice(audio, lead, nextAt, STEP * 1.6, "square", 0.16);
-      if (bass !== REST) voice(audio, bass, nextAt, STEP * 1.9, "triangle", 0.3);
+      const beat = STEP * tempo;
+      if (lead !== REST) voice(audio, lead, nextAt, beat * 1.6, "square", 0.16);
+      if (bass !== REST) voice(audio, bass, nextAt, beat * 1.9, "triangle", 0.3);
       // Тихий щелчок на каждую четвёртую долю - без него мелодия плывёт.
       if (i % 4 === 0) voice(audio, 84, nextAt, 0.03, "square", 0.03);
-      nextAt += STEP;
+      nextAt += beat;
       step += 1;
     }
   } catch {

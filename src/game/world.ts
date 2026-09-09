@@ -1,9 +1,12 @@
-import { levelAt, LEVELS } from "./levels";
-import { PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
+import { bonusRoom, levelAt, LEVELS } from "./levels";
+import {
+  COMBO_SCORE, INTRO_FRAMES, PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, POLE_BONUS_MAX, POLE_H,
+  ROTOR_STEP, SKILLS_PER_LIFE, TICKS_PER_SECOND, TUNING as T, VIEW,
+} from "./tuning";
 import { PAL } from "./palette";
 import type {
   Block, Boss, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Pipe, Player,
-  Projectile, Rect, RunStats,
+  Popup, Projectile, Rect, Rotor, RunStats,
 } from "./types";
 
 /**
@@ -55,13 +58,61 @@ export interface InputState {
   jumpPressed: boolean;
 }
 
+/**
+ * Итог одного уровня. Очки - только заработанные здесь: бонус за жизни в
+ * них не входит, потому что зависит от того, сколько жизней игрок принёс
+ * с собой, а не от того, как он сыграл на этом уровне.
+ */
+export interface LevelResult {
+  /** Номер уровня с единицы - как его видит игрок. */
+  level: number;
+  score: number;
+  frames: number;
+  deaths: number;
+  skills: number;
+}
+
 export type WorldEvent =
   | "stomp" | "hurt" | "pickup" | "coffee"
   | "checkpoint" | "clear" | "death" | "final" | "jump" | "pipe" | "bossHit" | "bossDown"
-  | "bump" | "break" | "gradeUp" | "gradeDown" | "throw" | "vacation";
+  | "bump" | "break" | "gradeUp" | "gradeDown" | "throw" | "vacation" | "life" | "pole"
+  | "levelDone";
 
 /** Кадры на спуск в трубу и на подъём из парной. */
 const WARP_DIVE = 22;
+
+/** Сколько кадров живёт бонусная комната. Пятнадцать секунд на всё. */
+const ROOM_FRAMES = 15 * TICKS_PER_SECOND;
+
+/**
+ * Что подменяется на время бонусной комнаты. Комната - обычный уровень,
+ * поэтому прежний просто откладывается целиком и возвращается на выходе:
+ * второго состояния мира заводить не пришлось.
+ */
+interface Stash {
+  level: LevelSpec;
+  camera: number;
+  gems: Pickup[];
+  coffee: Pickup[];
+  blocks: Block[];
+  items: Item[];
+  shots: Projectile[];
+  moving: MovingPlatform[];
+  foes: Foe[];
+  rotors: Rotor[];
+  deadlineX: number | null;
+  /** Труба, из которой пришли: в неё же и выйдем. */
+  pipeX: number;
+}
+
+/**
+ * Финиш по кадрам: спуск по флагштоку, проход до двери, уход внутрь.
+ * Разбито на три отрезка, потому что каждый читается отдельно: сначала
+ * видно, как высоко зацепился, потом - что дошёл, потом - что забрал оффер.
+ */
+const SLIDE_FRAMES = 34;
+const WALK_FRAMES = 44;
+const ENTER_FRAMES = 30;
 
 /** Сколько попаданий держит босс - нужно для разгона по мере урона. */
 const BOSS_HP_MAX = 3;
@@ -81,6 +132,23 @@ export class World {
   questions: Projectile[] = [];
   /** С какого кадра идёт текущий уровень - отсюда считается бонус за скорость. */
   private levelStartFrame = 0;
+  /** Счёт и скиллы на входе в уровень: разница даёт результат уровня. */
+  private levelScoreStart = 0;
+  private levelSkillsStart = 0;
+  /** Смерти на текущем уровне. */
+  private levelDeaths = 0;
+  /**
+   * Результат последнего пройденного уровня.
+   *
+   * Уровни - главная таблица игры, и не случайно: карты процедурные, но
+   * детерминированные, у каждого уровня фиксированный сид. Значит «Стартап»
+   * у всех одинаковый, и сравнивать результаты на нём честно - в отличие
+   * от общего счёта за забег, который зависит от того, сколько игрок успел
+   * набегать до смерти.
+   */
+  lastLevel: LevelResult | null = null;
+  /** Место в таблице уровня - приходит с сервера и показывается на карточке. */
+  levelPlace: string | null = null;
   levelIndex = 0;
   level: LevelSpec = levelAt(0);
   phase: Phase = "play";
@@ -95,6 +163,29 @@ export class World {
   moving: MovingPlatform[] = [];
   foes: Foe[] = [];
   particles: Particle[] = [];
+  /** Всплывающие «+400» и «1UP» над местом события. */
+  popups: Popup[] = [];
+  /** Собес пройден в этом забеге - нужно для значка. */
+  bossDown = false;
+  rotors: Rotor[] = [];
+  /**
+   * Сколько врагов растоптано подряд, ни разу не коснувшись земли.
+   * Обнуляется приземлением, уроном и смертью.
+   */
+  combo = 0;
+  /** Кадры заставки перед уровнем. */
+  introT = 0;
+  /** Идущая анимация финиша: кадр, высота захвата, начисленный бонус. */
+  finish: { t: number; y: number; bonus: number } | null = null;
+  /** Остаток времени в бонусной комнате. Ноль - комнаты нет. */
+  roomTimer = 0;
+  /** Отложенный на время комнаты уровень. */
+  private stash: Stash | null = null;
+  /**
+   * Трубы, чья комната уже посещена. Одна комната на трубу за забег:
+   * иначе в неё ходят по кругу и набивают жизни бесконечно.
+   */
+  usedRooms = new Set<number>();
   /** Позиция стены дедлайна, null - стены на уровне нет. */
   deadlineX: number | null = null;
   /** X последнего пройденного коммита - сюда возрождаемся. */
@@ -105,10 +196,13 @@ export class World {
   skills = 0;
   shake = 0;
   ticks = 0;
+  /** На каком скилле дадут следующую жизнь. */
+  private nextLife = SKILLS_PER_LIFE;
 
   stats: RunStats = {
     score: 0, skills: 0, levelsCleared: 0, frames: 0,
     jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0, pipes: 0,
+    maxCombo: 0, startLevel: 0,
   };
 
   private listeners = new Set<(e: WorldEvent) => void>();
@@ -125,7 +219,14 @@ export class World {
     for (const fn of this.listeners) fn(e);
   }
 
-  newRun(): void {
+  /**
+   * Новый забег. С уровня можно начать не с первого: после «Выгорания»
+   * игра предлагает продолжить с достигнутого, иначе двенадцать уровней
+   * подряд без права на ошибку - слишком для игры, которую открывают
+   * из чата на пять минут. Такой забег помечен startLevel и в общий зачёт
+   * идти не должен.
+   */
+  newRun(from = 0): void {
     // Грейд обнуляем явно. loadLevel переносит его из текущего игрока, а
     // respawn при последней жизни выходит по return ДО пересборки игрока -
     // поэтому после «Выгорания» новый забег начинался сеньором, ростом 22
@@ -142,14 +243,21 @@ export class World {
     this.stats = {
       score: 0, skills: 0, levelsCleared: 0, frames: 0,
       jumps: 0, stomps: 0, deaths: 0, blocks: 0, tested: 0, pipes: 0,
+      maxCombo: 0, startLevel: from,
     };
-    this.loadLevel(0);
-    this.phase = "play";
+    this.nextLife = SKILLS_PER_LIFE;
+    this.combo = 0;
+    this.popups = [];
+    this.bossDown = false;
+    this.loadLevel(from);
   }
 
   loadLevel(index: number): void {
     this.levelIndex = index;
-    const lv = levelAt(index);
+    this.loadSpec(levelAt(index));
+  }
+
+  private loadSpec(lv: LevelSpec): void {
     this.level = lv;
 
     const grade = (this.player?.grade ?? 0) as Grade;
@@ -184,6 +292,10 @@ export class World {
     this.boss = lv.boss ? { ...lv.boss } : null;
     this.questions = [];
     this.levelStartFrame = this.stats.frames;
+    this.levelScoreStart = this.score;
+    this.levelSkillsStart = this.skills;
+    this.levelDeaths = 0;
+    this.levelPlace = null;
     this.moving = lv.moving.map((m) => {
       // Размах может быть отрицательным - лифт, который едет вверх.
       // Границы обязаны быть упорядочены: иначе разворот срабатывает
@@ -201,16 +313,31 @@ export class World {
       };
     });
     this.particles = [];
+    this.popups = [];
+    this.rotors = lv.rotors.map((r) => ({ ...r, angle: r.phase }));
+    this.combo = 0;
+    this.finish = null;
     this.checkpointX = 10;
+    this.stash = null;
+    this.roomTimer = 0;
+    this.usedRooms = new Set();
     this.deadlineX = lv.deadlineSpeed > 0 ? -46 : null;
+    // Заставка перед стартом: имя уровня, грейд, жизни. Пауза на вдох -
+    // без неё уровни сливаются в один длинный забег без начала и конца.
+    this.introT = INTRO_FRAMES;
+    this.phase = "intro";
   }
 
   /** Переход по экранам между уровнями и после финала. */
   advance(): void {
+    if (this.phase === "intro") {
+      this.introT = 0;
+      this.phase = "play";
+      return;
+    }
     if (this.phase === "clear") {
       if (this.levelIndex + 1 < LEVELS.length) {
         this.loadLevel(this.levelIndex + 1);
-        this.phase = "play";
       } else {
         this.phase = "final";
         this.emit("final");
@@ -294,6 +421,34 @@ export class World {
       p.y = hit.y + hit.h;
       if (p.vy < 0) p.vy = 0;
     }
+  }
+
+  /** Надпись над местом события: живёт секунду и всплывает вверх. */
+  private popup(x: number, y: number, text: string, color: string): void {
+    this.popups.push({ x, y, text, color, life: 52 });
+  }
+
+  private gainLife(x: number, y: number): void {
+    this.lives += 1;
+    this.popup(x, y, "1UP", PAL.offer);
+    this.emit("life");
+  }
+
+  /**
+   * Награда за растоптанного. Цепочка без касания земли платит по нарастающей,
+   * а после шестого подряд - жизнью: за красивую игру платят попыткой, и
+   * именно это заставляет прыгать по головам, а не просто идти вправо.
+   */
+  private stompReward(x: number, y: number): void {
+    this.combo += 1;
+    if (this.combo > this.stats.maxCombo) this.stats.maxCombo = this.combo;
+    if (this.combo > COMBO_SCORE.length) {
+      this.gainLife(x, y);
+      return;
+    }
+    const gain = COMBO_SCORE[this.combo - 1] ?? T.scoreStomp;
+    this.score += gain;
+    this.popup(x, y, `+${gain}`, this.combo > 1 ? PAL.gemLite : PAL.text);
   }
 
   private burst(x: number, y: number, color: string, count: number): void {
@@ -414,6 +569,7 @@ export class World {
     } else {
       b.dying = 72;
       this.questions = [];
+      this.bossDown = true;
       this.emit("bossDown");
     }
   }
@@ -451,6 +607,7 @@ export class World {
     if (p.hurt > 0 || p.vacation > 0) return;
 
     p.hurt = T.hurtFrames;
+    this.combo = 0;
     p.vx = p.x < fromX ? -T.knockbackX : T.knockbackX;
     p.vy = T.knockbackY;
     this.shake = T.shakeFrames;
@@ -469,8 +626,14 @@ export class World {
   }
 
   private respawn(): void {
+    // Умереть в комнате нечем - там ни врагов, ни ям, - но если игра
+    // когда-нибудь дойдёт сюда, мир обязан вернуться на место: иначе
+    // возрождение случится в заначке, из которой уже не выйти.
+    if (this.stash) this.leaveRoom();
     this.lives -= 1;
     this.stats.deaths += 1;
+    this.levelDeaths += 1;
+    this.combo = 0;
     this.emit("death");
     if (this.lives <= 0) {
       this.phase = "over";
@@ -507,6 +670,216 @@ export class World {
     if (this.deadlineX !== null) this.deadlineX = x - 56;
   }
 
+  /** Игрок сейчас в бонусной комнате. */
+  get inRoom(): boolean {
+    return this.stash !== null;
+  }
+
+  /**
+   * Спуск в бонусную комнату. Мир подменяется целиком: прежний уровень
+   * откладывается со всем набранным - разбитыми ящиками, собранными
+   * скиллами, положением врагов, - и возвращается ровно таким же.
+   */
+  private enterRoom(pipe: Pipe): void {
+    const lv = this.level;
+    this.stash = {
+      level: lv,
+      camera: this.camera,
+      gems: this.gems,
+      coffee: this.coffee,
+      blocks: this.blocks,
+      items: this.items,
+      shots: this.shots,
+      moving: this.moving,
+      foes: this.foes,
+      rotors: this.rotors,
+      deadlineX: this.deadlineX,
+      pipeX: pipe.x,
+    };
+
+    const room = bonusRoom(Math.round(pipe.x), lv.maxSpeed);
+    this.level = room;
+    this.gems = room.gems.map((g) => ({ x: g.x, y: g.y, taken: false }));
+    this.coffee = room.coffee.map((c) => ({ x: c.x, y: c.y, taken: false }));
+    this.blocks = [];
+    this.items = [];
+    this.shots = [];
+    this.moving = [];
+    this.foes = [];
+    this.rotors = [];
+    this.particles = [];
+    // Стена дедлайна снаружи и остаётся: в комнате она не идёт, но и
+    // не отматывается назад - время в заначке всё равно чего-то стоит.
+    this.deadlineX = null;
+    this.roomTimer = ROOM_FRAMES;
+
+    const p = this.player;
+    p.x = 14;
+    p.y = room.groundY - p.h - 1;
+    p.vx = 0;
+    p.vy = 0;
+    p.buffer = 0;
+    this.camera = 0;
+    this.combo = 0;
+    this.stats.pipes += 1;
+    this.emit("pipe");
+  }
+
+  /**
+   * Возврат из комнаты: наружу, на крышку той же трубы. Труба помечается
+   * использованной - её жерло гаснет, и второй раз спуститься нельзя.
+   */
+  private leaveRoom(): void {
+    const st = this.stash;
+    if (!st) return;
+
+    this.level = st.level;
+    this.camera = st.camera;
+    this.gems = st.gems;
+    this.coffee = st.coffee;
+    this.blocks = st.blocks;
+    this.items = st.items;
+    this.shots = st.shots;
+    this.moving = st.moving;
+    this.foes = st.foes;
+    this.rotors = st.rotors;
+    this.deadlineX = st.deadlineX;
+    this.stash = null;
+    this.roomTimer = 0;
+    this.usedRooms.add(st.pipeX);
+    this.particles = [];
+
+    const pipe = st.level.pipes.find((o) => o.x === st.pipeX);
+    const p = this.player;
+    if (pipe) {
+      p.x = pipe.x + pipe.w / 2 - p.w / 2;
+      p.y = pipe.y - p.h;
+    }
+    p.vx = 0;
+    p.vy = 0;
+    p.buffer = 0;
+    p.onGround = true;
+    p.coyote = T.coyoteFrames;
+    this.emit("pipe");
+  }
+
+  /**
+   * Захват флагштока. Чем выше зацепился, тем больше бонус - за верхушку
+   * дают втрое против земли. Ровно ради этой разницы лестницу перед
+   * финишем и рисуют: она даёт способ прыгнуть выше, а не просто дойти.
+   */
+  private grabPole(): void {
+    const p = this.player;
+    const lv = this.level;
+    const feet = Math.min(p.y + p.h, lv.pole.y);
+    const height = Math.max(0, Math.min(1, (lv.pole.y - feet) / POLE_H));
+    // Округляем до сотен: «+2300» читается с одного взгляда, «+2287» - нет.
+    const bonus = Math.max(100, Math.round((height * POLE_BONUS_MAX) / 100) * 100);
+
+    this.score += bonus;
+    this.popup(lv.pole.x, feet - 10, `+${bonus}`, PAL.gemLite);
+    this.finish = { t: 0, y: feet, bonus };
+    this.phase = "signing";
+    this.combo = 0;
+
+    p.vx = 0;
+    p.vy = 0;
+    p.face = 1;
+    p.x = lv.pole.x - p.w + 2;
+    p.y = feet - p.h;
+    this.emit("pole");
+  }
+
+  /**
+   * Анимация финиша: съехал по флагштоку, дошёл до двери, ушёл внутрь.
+   * Управление на это время отбирается - уровень уже пройден, и человеку
+   * дают посмотреть на результат, а не дёргать кнопки.
+   */
+  private updateSigning(): void {
+    const f = this.finish;
+    const lv = this.level;
+    const p = this.player;
+    if (!f) {
+      this.phase = "play";
+      return;
+    }
+    f.t += 1;
+
+    if (f.t <= SLIDE_FRAMES) {
+      // Спуск: и игрок, и флаг едут вниз одним движением.
+      const k = f.t / SLIDE_FRAMES;
+      p.y = f.y - p.h + (lv.pole.y - f.y) * k;
+    } else if (f.t <= SLIDE_FRAMES + WALK_FRAMES) {
+      p.y = lv.pole.y - p.h;
+      p.x = Math.min(lv.door.x + 4, p.x + 1.2);
+    } else if (f.t === SLIDE_FRAMES + WALK_FRAMES + 1) {
+      this.burst(lv.door.x + 9, lv.door.y - 20, PAL.door, 14);
+    }
+
+    if (f.t >= SLIDE_FRAMES + WALK_FRAMES + ENTER_FRAMES) this.clearLevel();
+
+    const target = p.x - VIEW.w / 2 + p.w / 2;
+    this.camera += (target - this.camera) * T.cameraEase;
+    this.camera = Math.max(0, Math.min(lv.width - VIEW.w, this.camera));
+  }
+
+  /** Уровень засчитан: очки за финиш, за жизни и за оставшееся время. */
+  private clearLevel(): void {
+    const livesBonus = this.lives * T.scoreLifeBonus;
+    this.score += T.scoreLevelClear + livesBonus;
+    // Бонус за скорость: сколько секунд осталось от нормы на уровень.
+    // Не уложился - просто ноль, штрафа за медленную игру нет.
+    const frames = this.stats.frames - this.levelStartFrame;
+    const spent = frames / TICKS_PER_SECOND;
+    const left = Math.max(0, T.levelParSeconds - spent);
+    this.score += Math.round(left * T.scorePerSecondLeft);
+    this.stats.levelsCleared += 1;
+    this.stats.score = this.score;
+    this.stats.skills = this.skills;
+
+    // Результат уровня: всё, что заработано здесь, минус бонус за жизни.
+    this.lastLevel = {
+      level: this.levelIndex + 1,
+      score: Math.max(0, this.score - this.levelScoreStart - livesBonus),
+      frames,
+      deaths: this.levelDeaths,
+      skills: this.skills - this.levelSkillsStart,
+    };
+
+    this.finish = null;
+    this.phase = "clear";
+    this.emit("levelDone");
+    this.emit("clear");
+  }
+
+  /**
+   * Где сейчас флаг на шесте. Едет вниз всегда с верхушки, как в классике:
+   * высота захвата решает размер бонуса, а не длину спуска.
+   */
+  get flagY(): number {
+    const lv = this.level;
+    const top = lv.pole.y - POLE_H + 6;
+    const bottom = lv.pole.y - 7;
+    if (!this.finish) return this.phase === "play" || this.phase === "intro" ? top : bottom;
+    const k = Math.min(1, this.finish.t / SLIDE_FRAMES);
+    return top + (bottom - top) * k;
+  }
+
+  /** Игрок уже шагнул в дверь - рисовать его больше не надо. */
+  get atDoor(): boolean {
+    return this.finish !== null && this.finish.t > SLIDE_FRAMES + WALK_FRAMES;
+  }
+
+  /**
+   * Сколько секунд осталось от нормы на уровень. Показывается в шапке:
+   * невидимая механика на поведение не влияет, а видимый отсчёт заставляет
+   * бежать, а не обшаривать каждый угол.
+   */
+  get secondsLeft(): number {
+    const spent = (this.stats.frames - this.levelStartFrame) / TICKS_PER_SECOND;
+    return Math.max(0, Math.ceil(T.levelParSeconds - spent));
+  }
+
   update(input: InputState): void {
     this.ticks += 1;
     if (this.shake > 0) this.shake -= 1;
@@ -520,8 +893,37 @@ export class World {
       if (q.life <= 0) this.particles.splice(i, 1);
     }
 
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const q = this.popups[i]!;
+      q.y -= 0.32;
+      q.life -= 1;
+      if (q.life <= 0) this.popups.splice(i, 1);
+    }
+
+    // Заставка уровня. Идёт своим счётчиком, а не по нажатию: игра
+    // не должна требовать действия от того, кто ещё читает название.
+    if (this.phase === "intro") {
+      this.introT -= 1;
+      if (this.introT <= 0) this.phase = "play";
+      return;
+    }
+
+    if (this.phase === "signing") {
+      this.updateSigning();
+      return;
+    }
+
     if (this.phase !== "play") return;
     this.stats.frames += 1;
+
+    // Время в заначке кончилось - выносит наружу само.
+    if (this.stash) {
+      this.roomTimer -= 1;
+      if (this.roomTimer <= 0) {
+        this.leaveRoom();
+        return;
+      }
+    }
 
     const p = this.player;
     const lv = this.level;
@@ -570,6 +972,31 @@ export class World {
       this.camera += (camTarget - this.camera) * T.cameraEase;
       this.camera = Math.max(0, Math.min(lv.width - VIEW.w, this.camera));
       return;
+    }
+
+    // Бонусная комната: та же кнопка вниз, но труба помечена входом.
+    // Одна комната на трубу за забег - использованная гаснет и молчит.
+    if (input.downPressed && p.onGround) {
+      const standing = (pipe: Pipe): boolean =>
+        Math.abs(p.y + p.h - pipe.y) <= 2 &&
+        p.x + p.w / 2 > pipe.x + 2 &&
+        p.x + p.w / 2 < pipe.x + pipe.w - 2;
+
+      if (this.stash) {
+        const exit = lv.pipes.find((pipe) => pipe.exit && standing(pipe));
+        if (exit) {
+          this.leaveRoom();
+          return;
+        }
+      } else {
+        const into = lv.pipes.find(
+          (pipe) => pipe.bonus && !this.usedRooms.has(pipe.x) && standing(pipe),
+        );
+        if (into) {
+          this.enterRoom(into);
+          return;
+        }
+      }
     }
 
     // Вход в трубу: стоим сверху на парной трубе и жмём вниз.
@@ -737,11 +1164,28 @@ export class World {
     if (!moved) break;
     }
     if (p.onGround || (wasGround && p.coyote === 0)) p.coyote = T.coyoteFrames;
+    // Цепочка живёт, пока игрок в воздухе. Коснулся земли - счёт с начала.
+    if (p.onGround) this.combo = 0;
 
     if (p.y > VIEW.h + 40) { this.respawn(); return; }
 
     for (const h of lv.hazards) {
       if (overlap(p, { ...h, y: h.y - 4 })) this.damage(h.x + h.w / 2);
+    }
+
+    // Ротация алертов. Её нельзя растоптать и нельзя закидать тестами -
+    // только выждать. Единственное препятствие в игре, которое решается
+    // терпением, а не действием.
+    for (const r of this.rotors) {
+      r.angle += r.speed;
+      if (p.hurt > 0 || p.vacation > 0) continue;
+      for (let i = 1; i <= r.beads; i++) {
+        const bx = r.x + Math.cos(r.angle) * i * ROTOR_STEP;
+        const by = r.y + Math.sin(r.angle) * i * ROTOR_STEP;
+        if (!overlap(p, { x: bx - 2.6, y: by - 2.6, w: 5.2, h: 5.2 })) continue;
+        this.damage(bx);
+        break;
+      }
     }
 
     if (this.deadlineX !== null) {
@@ -800,16 +1244,19 @@ export class World {
         // Тесты сразу дают сеньора: с ними появляется чем отбиваться.
         if (p.grade < 2) this.setGrade(2);
         this.score += 400;
+        this.popup(item.x + 5, item.y - 4, "+400", PAL.testLite);
         this.burst(item.x + 5, item.y + 5, PAL.door, 14);
         this.emit("gradeUp");
       } else if (item.kind === "vacation") {
         p.vacation = T.vacationFrames;
         this.score += T.scoreVacation;
+        this.popup(item.x + 5, item.y - 4, `+${T.scoreVacation}`, PAL.vacationLite);
         this.burst(item.x + 5, item.y + 5, PAL.gemLite, 16);
         this.emit("vacation");
       } else if (item.kind === "offer" && p.grade < 2) {
         this.setGrade((p.grade + 1) as Grade);
         this.score += 300;
+        this.popup(item.x + 5, item.y - 4, "+300", PAL.offerLite);
         this.burst(item.x + 5, item.y + 5, PAL.gem, 12);
         this.emit("gradeUp");
       } else if (item.kind === "coffee") {
@@ -856,6 +1303,7 @@ export class World {
           f.squashed = 1;
           this.stats.tested += 1;
           this.score += T.scoreTested;
+          this.popup(f.x + f.w / 2, f.y - 2, `+${T.scoreTested}`, PAL.test);
           this.burst(f.x + f.w / 2, f.y + 2, PAL.door, 10);
           dead = true;
           break;
@@ -872,6 +1320,13 @@ export class World {
       this.score += T.scoreGem;
       this.burst(g.x + 4, g.y + 4, PAL.gem, 7);
       this.emit("pickup");
+      // Каждая сотня скиллов - жизнь. На всех картах их около шестисот,
+      // то есть за полное прохождение набегает пять попыток: собирать
+      // становится выгодно, а не просто красиво.
+      if (this.skills >= this.nextLife) {
+        this.nextLife += SKILLS_PER_LIFE;
+        this.gainLife(g.x, g.y - 6);
+      }
     }
 
     for (const c of this.coffee) {
@@ -910,7 +1365,7 @@ export class World {
       // В отпуске сносим всё, чего касаемся, - даже созвоны.
       if (p.vacation > 0) {
         f.squashed = 1;
-        this.score += T.scoreStomp;
+        this.stompReward(f.x + f.w / 2, f.y - 2);
         this.stats.stomps += 1;
         this.burst(f.x + f.w / 2, f.y + 2, PAL.gemLite, 10);
         this.emit("stomp");
@@ -922,7 +1377,7 @@ export class World {
         p.vy = T.stompBounce;
         p.buffer = 0;
         this.shake = 5;
-        this.score += T.scoreStomp;
+        this.stompReward(f.x + f.w / 2, f.y - 2);
         this.stats.stomps += 1;
         const dust = f.kind === "bug" ? PAL.bug
           : f.kind === "debt" ? PAL.debtCrack
@@ -952,23 +1407,16 @@ export class World {
     this.updateBoss();
     this.updateQuestions();
 
-    // Финиш - вертикальная линия, а не коробка. Дверь высотой 24 пикселя
-    // от земли, и прилетевший в прыжке игрок оказывался выше неё: уровень
-    // не засчитывался, а за дверью оставалось всего 5 пикселей хода до
-    // стены, где он и застревал навсегда.
-    // Пока собес не пройден, дверь заперта: иначе босса можно обежать.
-    if (p.x + p.w > lv.door.x + 8 && !this.boss) {
-      const door = { x: lv.door.x, y: lv.door.y - 33, w: 18, h: 33 };
-      this.score += T.scoreLevelClear + this.lives * T.scoreLifeBonus;
-      // Бонус за скорость: сколько секунд осталось от нормы на уровень.
-      // Не уложился - просто ноль, штрафа за медленную игру нет.
-      const spent = (this.stats.frames - this.levelStartFrame) / TICKS_PER_SECOND;
-      const left = Math.max(0, T.levelParSeconds - spent);
-      this.score += Math.round(left * T.scorePerSecondLeft);
-      this.stats.levelsCleared += 1;
-      this.phase = "clear";
-      this.burst(door.x + 8, door.y + 12, PAL.door, 16);
-      this.emit("clear");
+    // Финиш. Пока собес не пройден, флагшток не считается: иначе босса
+    // можно было бы просто обежать.
+    //
+    // Второе условие - страховка на дверь. Флагшток можно перепрыгнуть
+    // с верхней ступени лестницы: его верхушка на 46, а прыжок с неё
+    // поднимает выше. Без страховки такой игрок доходил бы до двери,
+    // где не происходит уже ничего, - и уровень не кончался бы никогда.
+    if (!this.finish && !this.boss) {
+      const atPole = p.x + p.w > lv.pole.x && p.x < lv.pole.x + 3;
+      if (atPole || p.x + p.w > lv.door.x + 8) this.grabPole();
     }
 
     const target = p.x - VIEW.w / 2 + p.w / 2;

@@ -11,11 +11,27 @@
  */
 
 import { verifyInitData } from "./telegram.js";
-import { checkRun, gradeFor } from "./anticheat.js";
+import { verifyWorkaem } from "./auth.js";
+import { checkLevel, checkRun, gradeFor, LEVEL_NAMES } from "./anticheat.js";
+import {
+  ALL_TIME, anonName, boardOf, cleanName, hashId, levelMode, levelStats, PAGE_SIZE, placeOf,
+  playersPage, saveRun, statsOf, topOf,
+} from "./board.js";
 
 const SITE = "https://www.workaem.com";
-/** Игра живёт на другом домене, поэтому запросы к воркеру - кросс-доменные. */
-const ALLOWED_ORIGIN = "https://game.workaem.com";
+/**
+ * Игра живёт на другом домене, поэтому запросы к воркеру - кросс-доменные.
+ * Локальные адреса нужны для разработки: без них таблицу рекордов нельзя
+ * посмотреть, не выложив игру на сервер.
+ *
+ * CORS тут не защита, а разрешение для браузера: подделать Origin из
+ * скрипта ничего не стоит. Защита - подпись личности и античит.
+ */
+const ALLOWED_ORIGINS = [
+  "https://game.workaem.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
 
 /** UTM проставляем на каждой ссылке: без них не отличить трафик из бота. */
 const link = (path, medium) =>
@@ -30,6 +46,10 @@ const GREETING = [
   "",
   "*Двенадцать уровней* - от стажёра до оффера. С каждым игра ускоряется:",
   "сеньор просто работает быстрее. В конце ждёт финальный собес.",
+  "",
+  "Умер - можно продолжить с достигнутого уровня, а не начинать заново.",
+  "Есть и задача дня: один уровень, одинаковый у всех, меняется в сутки.",
+  "Результаты из Telegram попадают в общую таблицу - /top.",
 ].join("\n");
 
 /**
@@ -61,12 +81,18 @@ const HELP = [
   "",
   "*Правила*",
   "• Прыгни на врага сверху - раздавишь",
+  "• Цепочка без касания земли платит по нарастающей: 200, 400, 800",
+  "  и дальше; после шестого подряд дают жизнь",
+  "• Каждая сотня скиллов - тоже жизнь",
   "• Созвон растоптать нельзя, только обойти или закидать тестами",
+  "• Ротацию алертов не убить никак - только выждать",
   "• Ящик со знаком вопроса бьют снизу, головой",
   "• Оффер повышает грейд, кофе ускоряет, отпуск даёт неуязвимость",
   "• Флажок - коммит: с него начнёшь после смерти",
-  "• Труба с чёрным жерлом проходная: встань сверху и жми ▼",
+  "• Труба с чёрным жерлом проходная или ведёт в заначку:",
+  "  встань сверху и жми ▼",
   "• В прод не падай, а от стены дедлайна беги",
+  "• На финише флагшток: чем выше зацепился, тем больше бонус",
   "",
   "*Финал*",
   "На последнем уровне дверь заперта, пока не пройден собес. Он ходит",
@@ -91,6 +117,49 @@ const AUTHOR = [
   "Исходники открыты, ссылка ниже.",
 ].join("\n");
 
+/**
+ * Таблица рекордов текстом для бота.
+ *
+ * В чате она уместнее, чем в игре: её пересылают, на неё отвечают, и она
+ * поднимает бота в списке чатов. Недельная и дневная рядом - первая про
+ * упорство, вторая про честное сравнение на одной и той же карте.
+ */
+async function topMessage(env) {
+  if (!env.DB) return "Таблица рекордов ещё не подключена.";
+  try {
+    const [career, levels] = await Promise.all([
+      topOf(env.DB, "career", ALL_TIME, 5),
+      levelStats(env.DB),
+    ]);
+
+    const lines = ["*Весь путь* - лучший забег целиком"];
+    if (career.length === 0) lines.push("Пока пусто - можно стать первым.");
+    career.forEach((row, i) => {
+      lines.push(`${i + 1}. ${row.name} - ${row.score} очков, уровней ${row.levels}`);
+    });
+
+    // Уровни - главная таблица: карта у всех одна и та же, поэтому
+    // сравнение честное, в отличие от общего счёта за забег.
+    lines.push("", "*Лидеры уровней*");
+    if (levels.length === 0) {
+      lines.push("Ни одного уровня пока никто не сдал.");
+    } else {
+      for (const row of levels) {
+        const best = row.top[0];
+        if (!best) continue;
+        const name = LEVEL_NAMES[row.level - 1] ?? `Уровень ${row.level}`;
+        lines.push(`${row.level}. ${name} - ${best.name}, ${best.score} (игроков ${row.players})`);
+      }
+    }
+
+    lines.push("", "Полная статистика по уровням - на стартовом экране игры.");
+    return lines.join("\n");
+  } catch (err) {
+    console.error(`топ не собрался: ${err}`);
+    return "Таблица сейчас недоступна - попробуй позже.";
+  }
+}
+
 /** Кнопка web_app открывает Mini App прямо в чате, не уводя в браузер. */
 const playRow = (gameUrl) => [{ text: "Играть", web_app: { url: gameUrl } }];
 
@@ -101,8 +170,9 @@ function startKeyboard(gameUrl) {
       [{ text: "Вакансии", url: link("/jobs", "bot_start") }],
       [
         { text: "Как играть", callback_data: "help" },
-        { text: "Об авторе", callback_data: "author" },
+        { text: "Таблица рекордов", callback_data: "top" },
       ],
+      [{ text: "Об авторе", callback_data: "author" }],
     ],
   };
 }
@@ -159,6 +229,47 @@ async function call(env, method, payload) {
   return data;
 }
 
+/**
+ * Картинка результата. Приходит с клиента data-URL'ом и уходит в чат
+ * фотографией: расшаренную картинку открывают, ссылку пролистывают.
+ *
+ * Шлём multipart: у Telegram нет способа принять base64 в JSON, а держать
+ * файл на своей стороне ради одного сообщения незачем.
+ */
+const MAX_PHOTO = 900_000;
+
+function decodePng(dataUrl) {
+  const prefix = "data:image/png;base64,";
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith(prefix)) return null;
+  if (dataUrl.length > MAX_PHOTO) return null;
+  try {
+    const binary = atob(dataUrl.slice(prefix.length));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    // Подпись PNG: без неё это что угодно, но не картинка.
+    if (bytes[0] !== 0x89 || bytes[1] !== 0x50) return null;
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function sendPhoto(env, chatId, bytes, caption, keyboard) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  form.append("parse_mode", "Markdown");
+  form.append("reply_markup", JSON.stringify(keyboard));
+  form.append("photo", new Blob([bytes], { type: "image/png" }), "put-djuna.png");
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await res.json();
+  if (!data.ok) console.error(`sendPhoto: ${data.description}`);
+  return data;
+}
+
 function send(env, chatId, text, keyboard) {
   return call(env, "sendMessage", {
     chat_id: chatId,
@@ -184,6 +295,8 @@ async function handleUpdate(update, env) {
       await send(env, chat, HELP, { inline_keyboard: [playRow(gameUrlForCb)] });
     } else if (cb.data === "author") {
       await send(env, chat, AUTHOR, authorKeyboard(gameUrlForCb));
+    } else if (cb.data === "top") {
+      await send(env, chat, await topMessage(env), { inline_keyboard: [playRow(gameUrlForCb)] });
     }
     return;
   }
@@ -218,6 +331,11 @@ async function handleUpdate(update, env) {
     return;
   }
 
+  if (text.startsWith("/top")) {
+    await send(env, chatId, await topMessage(env), { inline_keyboard: [playRow(gameUrl)] });
+    return;
+  }
+
   if (text.startsWith("/help")) {
     await send(env, chatId, HELP, { inline_keyboard: [playRow(gameUrl)] });
     return;
@@ -235,7 +353,7 @@ async function handleUpdate(update, env) {
 
 
 /** Сообщение после финала: не реклама, а уместное предложение в нужный момент. */
-function resultMessage(user, stats) {
+function resultMessage(user, stats, standing) {
   const grade = gradeFor(stats.levelsCleared);
   const name = user.first_name ? `${user.first_name}, ты` : "Ты";
   const lines = [
@@ -245,6 +363,15 @@ function resultMessage(user, stats) {
     `Очков: ${stats.score}`,
   ];
   if (stats.deaths > 0) lines.push(`Смертей: ${stats.deaths}`);
+  // Цепочка растаптываний - то, чем хвастаются. Пишем её, только если
+  // она случилась: «цепочка 1» это не достижение, а просто прыжок.
+  if (stats.maxCombo > 2) lines.push(`Лучшая цепочка: ${stats.maxCombo} подряд`);
+  if (stats.pipes > 0) lines.push(`Найдено заначек и труб: ${stats.pipes}`);
+  // Место важнее топа: в первую десятку не попадёт почти никто, а своё
+  // место есть у каждого - и именно оно возвращает играть.
+  if (standing?.place) {
+    lines.push("", `Место в общем зачёте: *${standing.place}* из ${standing.total}`);
+  }
   lines.push("", "В жизни грейд растёт медленнее, но вакансии есть уже сейчас:");
   return lines.join("\n");
 }
@@ -258,56 +385,269 @@ function resultKeyboard() {
   };
 }
 
-function cors(extra = {}) {
+function cors(request, extra = {}) {
+  const origin = request?.headers.get("origin") ?? "";
   return {
-    "access-control-allow-origin": ALLOWED_ORIGIN,
-    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-max-age": "86400",
     ...extra,
   };
 }
 
-const json = (body, status = 200) =>
+const json = (request, body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: cors({ "content-type": "application/json" }),
+    headers: cors(request, { "content-type": "application/json", ...extra }),
   });
+
+/**
+ * Кто это играл.
+ *
+ * В таблицу рекордов пускаем только проверяемую личность: подпись Telegram
+ * или токен workaem. Гостей нет смысла отвергать грубо - им отвечаем так,
+ * чтобы игра могла предложить войти, а не просто показать ошибку.
+ */
+async function identify(payload, env) {
+  if (payload.initData) {
+    const auth = await verifyInitData(payload.initData, env.BOT_TOKEN);
+    if (!auth.ok) return { ok: false, reason: auth.reason, status: 401 };
+    return {
+      ok: true,
+      source: "tg",
+      id: String(auth.user.id),
+      name: auth.user.first_name ?? auth.user.username ?? "",
+      chatId: auth.user.id,
+      user: auth.user,
+    };
+  }
+  if (payload.wa) {
+    const auth = await verifyWorkaem(payload.wa, env.WORKAEM_SECRET);
+    if (!auth.ok) return { ok: false, reason: auth.reason, status: 401 };
+    return { ok: true, source: "wa", id: auth.user.id, name: auth.user.name, chatId: null };
+  }
+  // Гость: не ошибка, а состояние. Игра по этому ответу покажет, что
+  // результат остался в браузере, и предложит войти.
+  return { ok: false, reason: "гость", status: 403, guest: true };
+}
 
 async function handleResult(request, env) {
   let payload;
   try {
     payload = await request.json();
   } catch {
-    return json({ ok: false, error: "bad json" }, 400);
+    return json(request, { ok: false, error: "bad json" }, 400);
   }
 
-  const auth = await verifyInitData(payload.initData, env.BOT_TOKEN);
-  if (!auth.ok) {
-    console.warn(`результат отклонён: ${auth.reason}`);
-    return json({ ok: false, error: "unauthorized" }, 401);
+  const who = await identify(payload, env);
+  if (!who.ok) {
+    if (!who.guest) console.warn(`результат отклонён: ${who.reason}`);
+    return json(request, { ok: false, error: who.guest ? "guest" : "unauthorized" }, who.status);
   }
 
-  const check = checkRun(payload.stats);
+  const stats = payload.stats;
+  const check = checkRun(stats);
   if (!check.ok) {
-    console.warn(`невозможный забег от ${auth.user.id}: ${check.reason}`);
-    return json({ ok: false, error: "invalid run" }, 422);
+    console.warn(`невозможный забег от ${who.source}:${who.id}: ${check.reason}`);
+    return json(request, { ok: false, error: "invalid run" }, 422);
   }
 
-  // В личном чате chat_id совпадает с id пользователя.
-  const res = await call(env, "sendMessage", {
-    chat_id: auth.user.id,
-    text: resultMessage(auth.user, payload.stats),
-    reply_markup: resultKeyboard(),
-    parse_mode: "Markdown",
-    link_preview_options: { is_disabled: true },
-  });
+  const id = await hashId(who.source, who.id, env.BOARD_SALT);
+  const name = payload.anon ? anonName(id) : cleanName(who.name);
 
-  // Если человек открыл игру по прямой ссылке и ни разу не нажимал /start,
-  // Telegram запрещает боту писать первым. Это не ошибка игры - молча пропускаем.
-  if (!res.ok) console.log(`не доставлено ${auth.user.id}: ${res.description}`);
+  // Забег с продолжения в таблицу не идёт: рекорд должен означать
+  // пройденный путь целиком, а не последний его кусок. Проверяем на
+  // сервере, а не на клиенте: клиент можно и попросить не присылать,
+  // но полагаться на такую просьбу нельзя.
+  const forBoard = Number(stats.startLevel ?? 0) === 0;
 
-  return json({ ok: true, delivered: Boolean(res.ok) });
+  let standing = null;
+  if (env.DB && forBoard) {
+    try {
+      const saved = await saveRun(env.DB, {
+        who: `${who.source}:${id}`,
+        name,
+        source: who.source,
+        mode: "career",
+        bucket: ALL_TIME,
+        score: stats.score,
+        skills: stats.skills,
+        levels: stats.levelsCleared,
+        deaths: stats.deaths,
+        combo: stats.maxCombo ?? 0,
+        frames: stats.frames,
+        stomps: stats.stomps,
+        blocks: stats.blocks,
+        pipes: stats.pipes ?? 0,
+      });
+      if (saved.ok) standing = { place: saved.place, total: saved.total, best: saved.best };
+      else console.log(`не записан результат ${who.source}:${id}: ${saved.reason}`);
+    } catch (err) {
+      // Таблица - приятное дополнение. Не записалось - забег всё равно
+      // состоялся, и сообщение в чат уйдёт.
+      console.error(`запись в таблицу не удалась: ${err}`);
+    }
+  }
+
+  // Сообщение в чат уходит только тем, у кого чат есть, - то есть игрокам
+  // из Telegram. Для входа через workaem чата нет, и это нормально:
+  // результат он видит в самой игре и в таблице.
+  let delivered = false;
+  if (who.chatId && forBoard) {
+    const text = resultMessage(who.user, stats, standing);
+    const photo = decodePng(payload.photo);
+    const res = photo
+      ? await sendPhoto(env, who.chatId, photo, text, resultKeyboard())
+      : await call(env, "sendMessage", {
+          chat_id: who.chatId,
+          text,
+          reply_markup: resultKeyboard(),
+          parse_mode: "Markdown",
+          link_preview_options: { is_disabled: true },
+        });
+    // Если человек открыл игру по прямой ссылке и ни разу не нажимал /start,
+    // Telegram запрещает боту писать первым. Это не ошибка игры.
+    if (!res.ok) console.log(`не доставлено ${who.chatId}: ${res.description}`);
+    delivered = Boolean(res.ok);
+  }
+
+  return json(request, { ok: true, delivered, recorded: Boolean(standing), standing, name });
+}
+
+/**
+ * Результат одного уровня.
+ *
+ * Приходит на каждом финише, а не в конце забега: уровень - самостоятельное
+ * соревнование, и забег с продолжения честно участвует в таблицах тех
+ * уровней, которые действительно прошёл.
+ */
+async function handleLevel(request, env) {
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return json(request, { ok: false, error: "bad json" }, 400);
+  }
+
+  const who = await identify(payload, env);
+  if (!who.ok) {
+    return json(request, { ok: false, error: who.guest ? "guest" : "unauthorized" }, who.status);
+  }
+
+  const result = payload.result;
+  const check = checkLevel(result);
+  if (!check.ok) {
+    console.warn(`невозможный уровень от ${who.source}:${who.id}: ${check.reason}`);
+    return json(request, { ok: false, error: "invalid level" }, 422);
+  }
+
+  if (!env.DB) return json(request, { ok: true, recorded: false });
+
+  const id = await hashId(who.source, who.id, env.BOARD_SALT);
+  const name = payload.anon ? anonName(id) : cleanName(who.name);
+  try {
+    const saved = await saveRun(env.DB, {
+      who: `${who.source}:${id}`,
+      name,
+      source: who.source,
+      mode: levelMode(result.level),
+      bucket: ALL_TIME,
+      score: result.score,
+      skills: result.skills,
+      levels: 1,
+      deaths: result.deaths,
+      combo: 0,
+      frames: result.frames,
+      stomps: 0,
+      blocks: 0,
+      pipes: 0,
+    });
+    if (!saved.ok) return json(request, { ok: true, recorded: false, reason: saved.reason });
+    return json(request, {
+      ok: true,
+      recorded: true,
+      level: result.level,
+      standing: { place: saved.place, total: saved.total, best: saved.best },
+    });
+  } catch (err) {
+    console.error(`уровень не записался: ${err}`);
+    return json(request, { ok: true, recorded: false });
+  }
+}
+
+/**
+ * Экран статистики: сводка по всем уровням, общий зачёт и свои места.
+ * Личность необязательна - без неё приходит только общая часть.
+ */
+async function handleStats(request, env) {
+  if (!env.DB) return json(request, { ok: false, error: "no board" });
+
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch {
+    // Запрос без тела - это гость, который просто смотрит.
+  }
+
+  let who = null;
+  const auth = await identify(payload, env);
+  if (auth.ok) who = `${auth.source}:${await hashId(auth.source, auth.id, env.BOARD_SALT)}`;
+
+  try {
+    const data = await statsOf(env.DB, who);
+    return json(request, { ok: true, ...data });
+  } catch (err) {
+    console.error(`статистика не собралась: ${err}`);
+    return json(request, { ok: false, error: "stats failed" });
+  }
+}
+
+/**
+ * Список игроков постранично.
+ *
+ * Постранично, а не целиком: строк со временем станет тысячи, а список
+ * открывают с телефона в вебвью Telegram. Смещение считает клиент, но своё
+ * место приходит с сервера - по нему игра умеет прыгнуть сразу на нужную
+ * страницу, чего в бесконечной прокрутке не сделать.
+ */
+async function handlePlayers(request, env) {
+  if (!env.DB) return json(request, { ok: false, error: "no board" });
+
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch {
+    // Без тела - первая страница.
+  }
+
+  try {
+    const page = await playersPage(env.DB, payload.offset ?? 0, payload.limit ?? PAGE_SIZE);
+    const auth = await identify(payload, env);
+    let mine = null;
+    if (auth.ok) {
+      const who = `${auth.source}:${await hashId(auth.source, auth.id, env.BOARD_SALT)}`;
+      const standing = await placeOf(env.DB, "career", ALL_TIME, who);
+      if (standing.place) mine = standing;
+    }
+    return json(request, { ok: true, ...page, mine });
+  } catch (err) {
+    console.error(`список игроков не собрался: ${err}`);
+    return json(request, { ok: false, error: "players failed" });
+  }
+}
+
+/** Таблица рекордов для стартового экрана: всё нужное одним ответом. */
+async function handleBoard(request, env) {
+  if (!env.DB) return json(request, { ok: false, error: "no board" });
+  try {
+    const data = await boardOf(env.DB);
+    // Полминуты кеша: таблица меняется медленнее, чем её открывают.
+    return json(request, { ok: true, ...data }, 200, { "cache-control": "public, max-age=30" });
+  } catch (err) {
+    console.error(`таблица не отдалась: ${err}`);
+    return json(request, { ok: false, error: "board failed" });
+  }
 }
 
 export default {
@@ -318,12 +658,28 @@ export default {
       return new Response("ok", { headers: { "content-type": "text/plain" } });
     }
 
-    if (request.method === "OPTIONS" && url.pathname === "/result") {
-      return new Response(null, { status: 204, headers: cors() });
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: cors(request) });
     }
 
     if (request.method === "POST" && url.pathname === "/result") {
       return handleResult(request, env);
+    }
+
+    if (request.method === "GET" && url.pathname === "/board") {
+      return handleBoard(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/level") {
+      return handleLevel(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/stats") {
+      return handleStats(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/players") {
+      return handlePlayers(request, env);
     }
 
     if (request.method !== "POST" || url.pathname !== "/webhook") {

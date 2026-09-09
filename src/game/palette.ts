@@ -137,6 +137,17 @@ export const PAL = {
   vacationLite: "#FFD08A",
   vacationDark: "#C46A10",
 
+  /**
+   * Ротация алертов: раскалённый оранжевый. Он не спорит ни с одним врагом
+   * по цвету - у легаси коричневый, у бага красный, у созвона фиолетовый, -
+   * поэтому крутящуюся цепочку видно с первого кадра и ни с чем не спутать.
+   */
+  alert: "#FF6A2C",
+  alertLite: "#FFC46A",
+  alertCore: "#FFF2D0",
+  rack: "#332E46",
+  rackLite: "#4E4768",
+
   deadline: "#D0304A",
   door: "#2ECC71",
   doorFrame: "#5E3010",
@@ -148,11 +159,87 @@ export const PAL = {
 } as const;
 
 /**
+ * Ночная смена. Небо уходит в глубокий синий, зелень гаснет, а вот окон
+ * в башнях горит заметно больше, чем днём: ночью в офисе всегда кто-то
+ * сидит, и это единственное светлое пятно кадра.
+ */
+export const NIGHT = {
+  sky: "#131A34",
+  skyHigh: "#1A2244",
+  skyTop: "#0A0E22",
+  skyHorizon: "#2E3260",
+  cloud: "#2C3560",
+  cloudShade: "#1E2648",
+
+  hill: "#204A3E",
+  hillDark: "#14302A",
+  hillLite: "#2A6250",
+  hillFar: "#242F52",
+  hillFarDark: "#1A2342",
+  bush: "#1A4034",
+
+  tower: "#2C3766",
+  towerDark: "#232C56",
+  towerWindow: "#39406E",
+  towerWindowLit: "#FFDC96",
+  towerRoof: "#1A2248",
+  haze: "rgba(30,44,96,.30)",
+
+  ground: "#8A5424",
+  groundLite: "#A87038",
+  groundDark: "#5A3212",
+  groundEdge: "#3A200A",
+  brick: "#8A5424",
+  brickLite: "#A87038",
+  brickDark: "#5A3212",
+  brickTop: "#A87038",
+  brickEdge: "#5A3212",
+} as const;
+
+/**
+ * Прод горит. Аварийное освещение заливает всё красным, зелень выцветает
+ * до бурого, окна в башнях светятся тревожным оранжевым. Поверх кадра
+ * идёт пульс мигалки - он же единственная анимация фона.
+ */
+export const PROD = {
+  sky: "#3A1524",
+  skyHigh: "#4A1C28",
+  skyTop: "#220810",
+  skyHorizon: "#7E2E22",
+  cloud: "#6E2C2C",
+  cloudShade: "#4E2020",
+
+  hill: "#4A3220",
+  hillDark: "#2E1E12",
+  hillLite: "#66422A",
+  hillFar: "#5C2C26",
+  hillFarDark: "#42201C",
+  bush: "#42281A",
+
+  tower: "#5C2E36",
+  towerDark: "#4A242C",
+  towerWindow: "#703C42",
+  towerWindowLit: "#FFA060",
+  towerRoof: "#3A1C22",
+  haze: "rgba(190,60,40,.20)",
+
+  ground: "#A05A2A",
+  groundLite: "#C07A3A",
+  groundDark: "#6A3614",
+  groundEdge: "#44200A",
+  brick: "#A05A2A",
+  brickLite: "#C07A3A",
+  brickDark: "#6A3614",
+  brickTop: "#C07A3A",
+  brickEdge: "#6A3614",
+} as const;
+
+/**
  * Что меняется под землёй. Остальное - враги, предметы, блоки - остаётся
  * прежним: узнаваемость важнее полной перекраски, игрок должен понимать
  * встреченное с первого взгляда и там, и там.
  */
-export const UNDERGROUND = {
+export const UNDERGROUND: Record<string, string> = {
   sky: "#0E1430",
   skyHigh: "#161E42",
   ground: "#3A6E8C",
@@ -165,3 +252,14 @@ export const UNDERGROUND = {
   brickTop: "#5A9EBE",
   brickEdge: "#22485E",
 } as const;
+
+/**
+ * Подмены по темам в одном месте. Рендер спрашивает цвет через них и не
+ * знает, сколько всего тем: добавить новую - значит дописать сюда словарь,
+ * а не искать по файлу условия «если подземелье».
+ */
+export const THEME_COLORS: Record<string, Record<string, string>> = {
+  underground: UNDERGROUND,
+  night: NIGHT,
+  prod: PROD,
+};

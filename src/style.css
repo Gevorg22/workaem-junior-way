@@ -66,6 +66,15 @@ html, body {
 #hud-skills { color: var(--gold); }
 #hud-score { color: var(--text); }
 #hud-lives { color: var(--coral); letter-spacing: 2px; }
+#hud-time { color: var(--text); }
+
+/*
+ * Последние секунды. Таймер краснеет и мигает вместе с ускорением музыки:
+ * два канала об одном и том же, потому что во время прыжка человек смотрит
+ * на врага, а не в шапку.
+ */
+.hurry #hud-time { color: var(--coral); animation: blink 0.6s steps(2, end) infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
 
 #stage {
   display: block;
@@ -111,26 +120,43 @@ html, body {
   max-width: 880px;
   line-height: 1.5;
 }
-body[data-standalone="true"] .hint::after {
-  content: " · вне Telegram: стрелки и пробел";
-}
-
-/* Финальный экран - здесь игра отдаёт человека продукту */
-#outro {
+/* Экраны поверх игры: старт, конец забега и финал. Все трое устроены
+   одинаково, потому что читаются в одном и том же месте кадра. */
+#outro, #start, #gameover, #stats {
   position: absolute;
   inset: 0;
   background: rgba(15, 13, 24, 0.94);
   display: flex;
   flex-direction: column;
   align-items: center;
+  /*
+   * По центру, но не в убыток: при переполнении центрирование во flex
+   * срезает верх содержимого, и до него нельзя доскроллить - заголовок
+   * с кнопкой просто исчезали за краем. safe center в этом случае
+   * прижимает содержимое к началу. Первая строка - запас для браузеров,
+   * которые safe не понимают.
+   */
   justify-content: center;
-  gap: 12px;
-  padding: 20px;
+  justify-content: safe center;
+  gap: 10px;
+  padding: 16px;
   text-align: center;
+  /* На узком телефоне таблица, значки и кнопки в высоту кадра не влезают.
+     Прокрутка вместо обрезки: кнопку «Играть» человек обязан увидеть. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-#outro[hidden] { display: none; }
+#outro[hidden], #start[hidden], #gameover[hidden], #stats[hidden] { display: none; }
 
-#outro h2 {
+/*
+ * Ничего внутри экранов не сжимается. На телефоне кадр игры - широкая
+ * полоска, и высоты у экрана почти нет: без этого правила таблица
+ * сплющивалась до одной строки заголовков, а строки исчезали вовсе.
+ * Пусть лучше экран прокручивается.
+ */
+#outro > *, #start > *, #gameover > *, #stats > * { flex: 0 0 auto; }
+
+#outro h2, #start h2, #gameover h2, #stats h2 {
   font-family: var(--px);
   font-size: clamp(18px, 4vw, 26px);
   color: var(--gold);
@@ -138,7 +164,250 @@ body[data-standalone="true"] .hint::after {
   letter-spacing: 0.5px;
 }
 #outro-grade { font-size: 13px; color: var(--mint); }
-#outro-stats { font-size: 12px; color: var(--dim); }
+#outro-stats, #start-stats, #over-stats { font-size: 12px; color: var(--dim); margin: 0; }
+#start-note { font-size: 12px; color: var(--dim); margin: 0; max-width: 380px; }
+#gameover h2 { color: var(--coral); }
+
+/*
+ * Общая таблица на стартовом экране. Пять строк и своё место - больше
+ * на экране телефона всё равно не читают, а место важнее топа: в первую
+ * десятку не попадёт почти никто, а место есть у каждого.
+ */
+.board {
+  width: 100%;
+  max-width: 380px;
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  background: rgba(20, 18, 31, 0.6);
+  overflow: hidden;
+}
+.board[hidden] { display: none; }
+
+.board-head {
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+#board-rows {
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  /* Экраны поверх игры выровнены по центру, а таблица так не читается:
+     имена должны начинаться с одного места, иначе взгляду не за что
+     зацепиться при сравнении. */
+  text-align: left;
+}
+#board-rows li {
+  display: flex;
+  gap: 8px;
+  padding: 2.5px 0;
+  color: var(--text);
+}
+#board-rows li span:first-child { color: var(--dim); min-width: 16px; }
+#board-rows li span.name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#board-rows li span.score { color: var(--gold); }
+#board-rows li.me { color: var(--mint); }
+#board-rows li.empty { color: var(--dim); }
+
+#board-note {
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--dim);
+  text-align: left;
+}
+
+/* Строка личности: кто ты для таблицы и что с этим делать. */
+.who {
+  margin: 0;
+  max-width: 420px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dim);
+  text-align: center;
+}
+.who a { color: var(--mint); }
+.who b { color: var(--text); font-weight: 500; }
+.who label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+.who input { accent-color: var(--mint); }
+
+/* Место в таблице после забега - причина сыграть ещё раз. */
+.place { margin: 0; font-size: 12px; color: var(--gold); }
+.place a { color: var(--mint); }
+
+/*
+ * Кнопка выхода в меню в шапке. Тише игровых кнопок: ею пользуются раз
+ * за сессию, а не постоянно, но во время забега она обязана быть на виду -
+ * иначе из игры не выйти вовсе.
+ */
+.menu-btn {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  color: var(--dim);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.menu-btn:hover { color: var(--text); border-color: var(--dim); }
+.menu-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+/*
+ * Статистика по уровням. Таблица на двенадцать строк: номер, название,
+ * свой результат и число игроков. Нажатие раскрывает первую тройку -
+ * так экран остаётся коротким, но подробность есть у каждой строки.
+ */
+#stats-levels {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+#stats-levels > li { border-bottom: 1px solid var(--line); }
+#stats-levels > li:last-child { border-bottom: 0; }
+
+#stats-levels .row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+#stats-levels .row:hover { background: rgba(79, 224, 192, 0.07); }
+#stats-levels .row:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
+#stats-levels .lv { color: var(--dim); min-width: 18px; }
+#stats-levels .nm { flex: 1 1 auto; }
+#stats-levels .me { color: var(--gold); }
+#stats-levels .pl { color: var(--dim); min-width: 52px; text-align: right; }
+
+#stats-levels .top {
+  margin: 0;
+  padding: 0 8px 8px 34px;
+  list-style: none;
+  font-size: 11px;
+  color: var(--dim);
+}
+#stats-levels .top[hidden] { display: none; }
+#stats-levels .top li { display: flex; gap: 8px; padding: 1.5px 0; }
+#stats-levels .top .n { flex: 1 1 auto; color: var(--text); }
+
+#stats-note { margin: 0; max-width: 420px; font-size: 11px; line-height: 1.5; color: var(--dim); }
+
+/* Переключатель разделов статистики: уровни и игроки. */
+.tabs { display: flex; gap: 4px; }
+.tabs button {
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid var(--line);
+  cursor: pointer;
+}
+.tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
+.tabs button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+/*
+ * Список игроков. Постранично, а не бесконечной прокруткой: строк со
+ * временем станет тысячи, а экран открывают с телефона внутри вебвью,
+ * где своя прокрутка воюет с прокруткой страницы. Заодно постранично
+ * можно прыгнуть прямо на своё место.
+ */
+#stats-players { width: 100%; max-width: 420px; }
+#stats-players[hidden] { display: none; }
+
+#players-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+#players-rows li {
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+#players-rows li:last-child { border-bottom: 0; }
+#players-rows .pl { color: var(--dim); min-width: 34px; }
+#players-rows .nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#players-rows .sc { color: var(--gold); }
+#players-rows .lv { color: var(--dim); min-width: 30px; text-align: right; }
+#players-rows li.me { color: var(--mint); }
+#players-rows li.me .nm { font-weight: 700; }
+#players-rows li.empty { color: var(--dim); justify-content: center; border: 0; }
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0 0;
+  font-size: 11px;
+  color: var(--dim);
+}
+.pager button {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.pager button:disabled { color: var(--dim); cursor: default; opacity: 0.5; }
+.pager button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.pager button[hidden] { display: none; }
+
+/* Значки. Мелко и в строку: это не витрина достижений, а отметка
+   «этот кусок игры ты уже видел». */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 0;
+  max-width: 420px;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.badges span {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--dim);
+}
+.badges span.on { color: var(--gold); border-color: var(--gold); }
+.badges span.fresh { color: #0f0d18; background: var(--gold); border-color: var(--gold); }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
 

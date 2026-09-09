@@ -1,9 +1,10 @@
-import { PAL, UNDERGROUND } from "./palette";
+import { PAL, THEME_COLORS, UNDERGROUND } from "./palette";
 import { LEVELS } from "./levels";
-import { RENDER, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
+import { POLE_H, RENDER, ROTOR_STEP, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
 import {
   drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
-  drawBoss, drawItem, drawLift, drawPipe, drawProd, drawQuestion, drawShot, drawSquashed, drawSwamp,
+  drawBoss, drawItem, drawLift, drawPipe, drawPole, drawProd, drawQuestion, drawRotor, drawShot,
+  drawSquashed, drawSwamp, canvasBrush,
 } from "./sprites";
 import type { Painter } from "./sprites";
 import type { World } from "./world";
@@ -19,73 +20,7 @@ export class Renderer {
     // Сглаживание включено: картинка больше не складывается из кубиков,
     // а формы рисуются кривыми с мягким краем.
     this.ctx.imageSmoothingEnabled = true;
-    this.paint = Renderer.makeBrush(ctx);
-  }
-
-  /**
-   * Кисть поверх контекста. Координаты НЕ округляются - именно округление
-   * раньше загоняло всё в крупную сетку и делало пиксели видимыми.
-   */
-  private static makeBrush(ctx: CanvasRenderingContext2D): Painter {
-    const brush = ((x: number, y: number, w: number, h: number, color: string): void => {
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, w, h);
-    }) as Painter;
-
-    const path = (color: string, build: () => void): void => {
-      ctx.beginPath();
-      build();
-      ctx.fillStyle = color;
-      ctx.fill();
-    };
-
-    brush.round = (x, y, w, h, r, color) => {
-      const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
-      path(color, () => ctx.roundRect(x, y, w, h, rr));
-    };
-
-    brush.circle = (cx, cy, r, color) => {
-      path(color, () => ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2));
-    };
-
-    brush.oval = (cx, cy, rx, ry, color) => {
-      path(color, () => ctx.ellipse(cx, cy, Math.max(0, rx), Math.max(0, ry), 0, 0, Math.PI * 2));
-    };
-
-    brush.grad = (x, y, w, h, top, bottom, r = 0) => {
-      const g = ctx.createLinearGradient(x, y, x, y + h);
-      g.addColorStop(0, top);
-      g.addColorStop(1, bottom);
-      ctx.fillStyle = g;
-      if (r > 0) {
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2));
-        ctx.fill();
-      } else {
-        ctx.fillRect(x, y, w, h);
-      }
-    };
-
-    brush.glow = (cx, cy, r, color) => {
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(0.01, r));
-      g.addColorStop(0, color);
-      g.addColorStop(1, "transparent");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2);
-      ctx.fill();
-    };
-
-    brush.poly = (pts, color) => {
-      if (pts.length < 3) return;
-      path(color, () => {
-        ctx.moveTo(pts[0]![0], pts[0]![1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1]);
-        ctx.closePath();
-      });
-    };
-
-    return brush;
+    this.paint = canvasBrush(ctx);
   }
 
   private text(str: string, x: number, y: number, color: string, size = 7, display = false): void {
@@ -102,6 +37,19 @@ export class Renderer {
       : `${size}px 'JetBrains Mono', monospace`;
     const w = this.ctx.measureText(str).width;
     this.text(str, (VIEW.w - w) / 2, y, color, size, display);
+  }
+
+  /** Надпись по центру точки в мировых координатах - для всплывающих очков. */
+  private centeredAt(str: string, x: number, y: number, color: string, size: number): void {
+    this.ctx.font = `${size}px 'Pixelify Sans', monospace`;
+    const w = this.ctx.measureText(str).width;
+    this.ctx.fillStyle = color;
+    this.ctx.fillText(str, x - w / 2, y);
+  }
+
+  /** Разброс от номера: одно и то же число всегда даёт одно и то же место. */
+  private static spread(n: number): number {
+    return ((Math.imul(n + 1, 2654435761) >>> 8) % 10000) / 10000;
   }
 
   /** Кадры в «мм:сс». Кадр здесь - тик физики, их ровно TICKS_PER_SECOND в секунду. */
@@ -126,16 +74,49 @@ export class Renderer {
     ctx.restore();
     ctx.restore();
 
-    if (w.phase === "clear") {
+    if (w.level.theme === "prod") this.alarm(w);
+
+    // Табло заначки: сколько осталось. Без него комната - просто комната,
+    // и непонятно, почему из неё вдруг выбросило.
+    if (w.inRoom) {
+      const left = Math.max(0, Math.ceil(w.roomTimer / TICKS_PER_SECOND));
+      const p = this.paint;
+      p.round(VIEW.w / 2 - 34, 3, 68, 13, 3, "rgba(12,10,20,.72)");
+      p.round(VIEW.w / 2 - 34, 3, 68, 1.4, 0.7, PAL.gem);
+      this.centered(`ЗАНАЧКА ${left} С`, 12.5, left <= 4 ? PAL.deadline : PAL.gem, 8, true);
+    }
+
+    if (w.phase === "intro") {
+      // Заставка перед стартом. Та же карточка, что и между уровнями:
+      // ритм у игры должен быть один, а не свой экран на каждый случай.
+      this.card(w, {
+        title: `УРОВЕНЬ ${w.levelIndex + 1} ИЗ ${LEVELS.length}`,
+        accent: PAL.gem,
+        big: w.level.name.toUpperCase(),
+        rows: [
+          w.level.mood ? `грейд ${w.level.grade} · ${w.level.mood}` : `грейд ${w.level.grade}`,
+          `жизней ${w.lives} · очков ${w.score}`,
+        ],
+        hint: "погнали",
+      });
+    } else if (w.phase === "clear") {
       const last = w.levelIndex + 1 >= LEVELS.length;
+      const done = w.lastLevel;
+      // На карточке - результат именно этого уровня, а не всего забега:
+      // уровни и есть то, что игра сравнивает между игроками, а общий счёт
+      // за забег зависит от того, сколько успел набегать до смерти.
+      const rows = [
+        done
+          ? `за уровень ${done.score} · время ${Renderer.clock(done.frames)}`
+          : `очков ${w.score} · скиллов ${w.skills}`,
+        `всего ${w.score} · скиллов ${w.skills} · жизней ${w.lives}`,
+      ];
+      if (w.levelPlace) rows.push(w.levelPlace);
       this.card(w, {
         title: last ? "ПОСЛЕДНИЙ РУБЕЖ" : "ГРЕЙД ПОЛУЧЕН",
         accent: PAL.door,
         big: w.level.grade,
-        rows: [
-          `очков ${w.score} · скиллов ${w.skills}`,
-          `время ${Renderer.clock(w.stats.frames)} · жизней ${w.lives}`,
-        ],
+        rows,
         hint: last ? "финальный собес - жми" : "дальше",
       });
     } else if (w.phase === "over") {
@@ -209,18 +190,13 @@ export class Renderer {
     const step = Math.min(9, (cw - 24) / dots);
     const bw = step * dots;
     const by = cy + ch - 17;
-    const done = w.phase === "final" ? dots : w.levelIndex + (w.phase === "clear" ? 1 : 0);
+    const passed = w.phase === "final" ? dots : w.levelIndex + (w.phase === "clear" ? 1 : 0);
     for (let i = 0; i < dots; i++) {
       const dx = (VIEW.w - bw) / 2 + i * step + step / 2;
-      p.circle(dx, by, i < done ? 2 : 1.4, i < done ? o.accent : "rgba(255,255,255,.18)");
+      p.circle(dx, by, i < passed ? 2 : 1.4, i < passed ? o.accent : "rgba(255,255,255,.18)");
     }
 
-    // Подпись финала длиннее прочих - её кегль подбираем под ширину карточки,
-    // иначе адрес сайта упирался в рамку.
-    this.ctx.font = "6.5px 'JetBrains Mono', monospace";
-    const hintW = this.ctx.measureText(o.hint).width;
-    const hintSize = hintW > cw - 12 ? 6.5 * ((cw - 12) / hintW) : 6.5;
-    this.centered(o.hint, cy + ch - 5, o.celebrate ? PAL.door : PAL.dim, hintSize);
+    this.drawHint(o, cx, cy, cw, ch);
 
     if (o.celebrate) {
       // Салют по краям карточки - победа должна выглядеть победой.
@@ -239,13 +215,34 @@ export class Renderer {
   }
 
   /**
+   * Подпись под карточкой. Кегль подбирается под ширину: подпись финала
+   * длиннее прочих, и адрес сайта упирался в рамку.
+   */
+  private drawHint(
+    o: { hint: string; celebrate?: boolean },
+    _cx: number,
+    cy: number,
+    cw: number,
+    ch: number,
+  ): void {
+    this.ctx.font = "6.5px 'JetBrains Mono', monospace";
+    const hintW = this.ctx.measureText(o.hint).width;
+    const hintSize = hintW > cw - 12 ? 6.5 * ((cw - 12) / hintW) : 6.5;
+    this.centered(o.hint, cy + ch - 5, o.celebrate ? PAL.door : PAL.dim, hintSize);
+  }
+
+  /**
    * Дневная сцена: небо, облака, холмы, кусты - жанровая условность,
    * которая читается мгновенно. Айтишное здесь дальний план: офисные
    * башни вместо гор.
    */
-  /** Цвет с учётом темы: под землёй часть палитры подменяется. */
-  private tone<K extends keyof typeof UNDERGROUND>(w: World, key: K): string {
-    return w.level.theme === "underground" ? UNDERGROUND[key] : PAL[key];
+  /**
+   * Цвет с учётом темы. Тема подменяет часть палитры и ничего не знает
+   * о том, где именно этот цвет применяется: рисование остаётся одним
+   * и тем же кодом, а ночь, авария и подземелье отличаются словарём.
+   */
+  private tone<K extends keyof typeof PAL>(w: World, key: K): string {
+    return THEME_COLORS[w.level.theme]?.[key] ?? PAL[key];
   }
 
 
@@ -260,7 +257,27 @@ export class Renderer {
       // Небо одним градиентом от глубокого верха к светлому горизонту.
       // Сначала оно было двумя плашками со стыком посреди кадра, потом
       // четырнадцатью полосами - на светлом небе полосы всё равно видны.
-      p.grad(0, 0, VIEW.w, lv.groundY + 2, PAL.skyTop, PAL.skyHorizon);
+      p.grad(0, 0, VIEW.w, lv.groundY + 2, this.tone(w, "skyTop"), this.tone(w, "skyHorizon"));
+    }
+
+    // Ночью небо не пустое: звёзды и луна. Их почти не двигает камерой -
+    // небо на то и небо, что до него бесконечно далеко.
+    if (lv.theme === "night") {
+      p.glow(VIEW.w - 34, 16, 16, "rgba(242,233,200,.22)");
+      p.circle(VIEW.w - 34, 16, 6.5, "#F2E9C8");
+      p.circle(VIEW.w - 31, 14, 5.2, this.tone(w, "skyTop"));
+      for (let i = 0; i < 30; i++) {
+        // Разброс через хеш, а не через остаток от произведения: остаток
+        // выстраивает звёзды диагональными строчками, и небо читается
+        // штриховкой, а не звёздами.
+        let sx = (Renderer.spread(i) * (VIEW.w + 24) - w.camera * 0.05) % (VIEW.w + 24);
+        if (sx < 0) sx += VIEW.w + 24;
+        const sy = 3 + Renderer.spread(i + 77) * 44;
+        // Мерцание от номера звезды и времени: одинаково моргающее небо
+        // читается как гирлянда, а не как звёзды.
+        const dim = (i * 3 + Math.floor(w.ticks / 22)) % 6 === 0;
+        p.circle(sx, sy, i % 5 === 0 ? 0.9 : 0.55, dim ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.8)");
+      }
     }
 
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
@@ -287,10 +304,10 @@ export class Renderer {
         [0, 2, 4.6], [5.5, 0, 6], [12, 1.4, 5], [17.5, 3, 3.8], [8, 3.4, 5.4],
       ];
       for (const [dx, dy, r] of puffs) {
-        p.oval(cx + dx * size, cy + dy * size + 1, r * size * 1.05, r * size * 0.86, PAL.cloudShade);
+        p.oval(cx + dx * size, cy + dy * size + 1, r * size * 1.05, r * size * 0.86, this.tone(w, "cloudShade"));
       }
       for (const [dx, dy, r] of puffs) {
-        p.oval(cx + dx * size, cy + dy * size, r * size, r * size * 0.82, PAL.cloud);
+        p.oval(cx + dx * size, cy + dy * size, r * size, r * size * 0.82, this.tone(w, "cloud"));
       }
     }
 
@@ -310,8 +327,8 @@ export class Renderer {
       const fx = i * 118 - ((w.camera * 0.16) % 118);
       const fh = 26 + ((i * 37) % 12);
       const fw = 70 + ((i * 53) % 30);
-      p.oval(fx + fw / 2, lv.groundY, fw / 2, fh, PAL.hillFar);
-      p.oval(fx + fw / 2 - fw * 0.14, lv.groundY, fw / 3.4, fh * 0.82, PAL.hillFarDark);
+      p.oval(fx + fw / 2, lv.groundY, fw / 2, fh, this.tone(w, "hillFar"));
+      p.oval(fx + fw / 2 - fw * 0.14, lv.groundY, fw / 3.4, fh * 0.82, this.tone(w, "hillFarDark"));
     }
 
     // Офисные башни. Ширина, высота и горящие окна пляшут от индекса:
@@ -321,9 +338,9 @@ export class Renderer {
       const bh = 22 + ((i * 29) % 20);
       const bw = 16 + ((i * 13) % 12);
       const dark = i % 2 === 1;
-      p.grad(bx, lv.groundY - bh, bw, bh, dark ? PAL.towerDark : PAL.tower, PAL.towerRoof, 1.2);
+      p.grad(bx, lv.groundY - bh, bw, bh, dark ? this.tone(w, "towerDark") : this.tone(w, "tower"), this.tone(w, "towerRoof"), 1.2);
       // Кромка крыши: без неё башня сливается с небом.
-      p.round(bx - 0.6, lv.groundY - bh, bw + 1.2, 2, 0.8, PAL.towerRoof);
+      p.round(bx - 0.6, lv.groundY - bh, bw + 1.2, 2, 0.8, this.tone(w, "towerRoof"));
       // Мягкая тень по правой грани даёт объём.
       p.grad(bx + bw - 3, lv.groundY - bh + 2, 3, bh - 2, "rgba(0,0,0,0)", "rgba(30,60,100,.28)");
 
@@ -331,10 +348,13 @@ export class Renderer {
       for (let row = 0; row < Math.floor((bh - 6) / 6); row++) {
         for (let col = 0; col < cols; col++) {
           // Псевдослучайно, но от координат: при прокрутке окна не мигают.
-          const lit = ((i * 7 + row * 13 + col * 29) % 11) < 3;
+          // Ночью и в аварию горящих окон больше: днём это единичные
+          // трудоголики, ночью - вся команда на созвоне.
+          const litEvery = lv.theme === "surface" ? 3 : 6;
+          const lit = ((i * 7 + row * 13 + col * 29) % 11) < litEvery;
           p.round(
             bx + 3 + col * 6, lv.groundY - bh + 5 + row * 6, 3, 3, 0.7,
-            lit ? PAL.towerWindowLit : PAL.towerWindow,
+            lit ? this.tone(w, "towerWindowLit") : this.tone(w, "towerWindow"),
           );
           if (lit) p.glow(bx + 4.5 + col * 6, lv.groundY - bh + 6.5 + row * 6, 4, "rgba(245,217,160,.35)");
         }
@@ -344,7 +364,7 @@ export class Renderer {
     // Воздушная перспектива. Всё, что нарисовано выше - небо, дальняя гряда,
     // город - уходит в дымку, и передний план сам собой выступает вперёд.
     // Без неё башни спорили по контрасту с игроком и тянули взгляд на себя.
-    p(0, 0, VIEW.w, lv.groundY, PAL.haze);
+    p(0, 0, VIEW.w, lv.groundY, this.tone(w, "haze"));
 
     // Холмы куполами. Солнце слева, поэтому светлая половина слева,
     // тень справа - объём получается без единой ступеньки.
@@ -354,9 +374,9 @@ export class Renderer {
       const hh = tall ? 24 : 15;
       const hw = tall ? 48 : 32;
       const cxh = hx + hw / 2;
-      p.oval(cxh, lv.groundY, hw / 2, hh, PAL.hillDark);
-      p.oval(cxh - hw * 0.09, lv.groundY, hw / 2.3, hh * 0.94, PAL.hill);
-      p.oval(cxh - hw * 0.19, lv.groundY, hw / 3.6, hh * 0.78, PAL.hillLite);
+      p.oval(cxh, lv.groundY, hw / 2, hh, this.tone(w, "hillDark"));
+      p.oval(cxh - hw * 0.09, lv.groundY, hw / 2.3, hh * 0.94, this.tone(w, "hill"));
+      p.oval(cxh - hw * 0.19, lv.groundY, hw / 3.6, hh * 0.78, this.tone(w, "hillLite"));
     }
 
     // Кусты вдоль земли - те же круги внахлёст, что и облака, только
@@ -366,10 +386,10 @@ export class Renderer {
       const bx = b * 61 + ((b * 23) % 17) - ((w.camera * 0.7) % 61);
       const big = b % 3 === 0;
       const k = big ? 1 : 0.7;
-      p.oval(bx + 4 * k, lv.groundY - 1, 4.4 * k, 3.4 * k, PAL.bush);
-      p.oval(bx + 10 * k, lv.groundY - 1, 5.2 * k, 4.4 * k, PAL.bush);
-      p.oval(bx + 16 * k, lv.groundY - 1, 4 * k, 3 * k, PAL.bush);
-      p.oval(bx + 9 * k, lv.groundY - 3 * k, 3.4 * k, 2.4 * k, PAL.hillLite);
+      p.oval(bx + 4 * k, lv.groundY - 1, 4.4 * k, 3.4 * k, this.tone(w, "bush"));
+      p.oval(bx + 10 * k, lv.groundY - 1, 5.2 * k, 4.4 * k, this.tone(w, "bush"));
+      p.oval(bx + 16 * k, lv.groundY - 1, 4 * k, 3 * k, this.tone(w, "bush"));
+      p.oval(bx + 9 * k, lv.groundY - 3 * k, 3.4 * k, 2.4 * k, this.tone(w, "hillLite"));
     }
 
     this.ctx.restore();
@@ -453,7 +473,15 @@ export class Renderer {
       if (seen(s.x, s.w)) drawSwamp(p, s.x, s.y, s.w, Math.floor(w.ticks / 12) % 3);
     }
     for (const pipe of lv.pipes) {
-      if (seen(pipe.x, pipe.w)) drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, pipe.link !== undefined);
+      if (!seen(pipe.x, pipe.w)) continue;
+      // Жерло чёрное - значит труба живая: парная, вход в заначку или
+      // выход из неё. Использованная бонусная гаснет, и это единственный
+      // способ сказать «здесь уже были» без единого слова текста.
+      const open =
+        pipe.link !== undefined ||
+        pipe.exit === true ||
+        (pipe.bonus === true && !w.usedRooms.has(pipe.x));
+      drawPipe(p, pipe.x, pipe.y, pipe.w, pipe.h, open);
     }
     for (const m of w.moving) {
       if (seen(m.x, m.w)) drawLift(p, m.x, m.y, m.w);
@@ -463,8 +491,9 @@ export class Renderer {
       if (seen(cp.x, 12)) drawCheckpoint(p, cp.x, cp.y, cp.x <= w.checkpointX);
     }
 
-    drawDoor(p, lv.door.x, lv.door.y - 33, w.phase === "clear");
+    drawDoor(p, lv.door.x, lv.door.y - 33, w.phase === "clear" || w.atDoor);
     this.text("СОБЕС", lv.door.x - 4, lv.door.y - 37, PAL.door);
+    drawPole(p, lv.pole.x, lv.pole.y, POLE_H, w.flagY);
 
     for (const g of w.gems) {
       if (!seen(g.x, 8)) continue;
@@ -510,6 +539,11 @@ export class Renderer {
       else drawFoe(p, f.kind, x, y, Math.floor(w.ticks / 4) % 2 === 0);
     }
 
+    for (const r of w.rotors) {
+      const reach = r.beads * ROTOR_STEP + 4;
+      if (seen(r.x - reach, reach * 2)) drawRotor(p, r.x, r.y, r.beads, r.angle, ROTOR_STEP);
+    }
+
     for (const shot of w.shots) {
       if (seen(shot.x, 5)) drawShot(p, shot.x, shot.y, Math.floor(w.ticks / 4));
     }
@@ -532,7 +566,16 @@ export class Renderer {
       p.circle(q.x + 1, q.y + 1, 0.5 + k * 1.1, q.color);
     }
 
-    if (w.phase === "play" || w.phase === "clear") {
+    // Всплывающие очки. Рисуются последними из мирового слоя: цифра над
+    // растоптанным врагом важнее самого врага - именно она объясняет,
+    // за что дали, и без неё цепочка растаптываний не читается вовсе.
+    for (const q of w.popups) {
+      this.ctx.globalAlpha = Math.min(1, q.life / 16);
+      this.centeredAt(q.text, q.x, q.y, q.color, 7.5);
+      this.ctx.globalAlpha = 1;
+    }
+
+    if ((w.phase === "play" || w.phase === "clear" || w.phase === "signing") && !w.atDoor) {
       if (w.warp) {
         // Во время ныряния игрок уходит НИЖЕ кромки земли, а земля нарисована
         // раньше него - штанины и ботинки торчали из-под трубы поверх пола.
@@ -567,16 +610,34 @@ export class Renderer {
   /** Свод подземелья. Рисуется дважды: в фоне и поверх всего. */
   private ceiling(w: World): void {
     const p = this.paint;
-    const c = UNDERGROUND;
-    p.grad(0, 0, VIEW.w, 11, c.groundLite, c.ground);
-    p.round(0, 9, VIEW.w, 2, 0.8, c.groundDark);
+    const lite = UNDERGROUND["groundLite"] ?? PAL.groundLite;
+    const base = UNDERGROUND["ground"] ?? PAL.ground;
+    const dark = UNDERGROUND["groundDark"] ?? PAL.groundDark;
+    const edge = UNDERGROUND["groundEdge"] ?? PAL.groundEdge;
+    p.grad(0, 0, VIEW.w, 11, lite, base);
+    p.round(0, 9, VIEW.w, 2, 0.8, dark);
     for (let x = 0; x < VIEW.w; x += 12) {
-      p.round(x - ((w.camera * 0.5) % 12), 0, 0.8, 9, 0.4, c.groundEdge);
+      p.round(x - ((w.camera * 0.5) % 12), 0, 0.8, 9, 0.4, edge);
     }
     for (let i = 0; i < 10; i++) {
       const gx = i * 46 - ((w.camera * 0.5) % 46);
-      p.oval(gx + 4, 11, 4.4, 3.2, c.groundDark);
+      p.oval(gx + 4, 11, 4.4, 3.2, dark);
     }
+  }
+
+  /**
+   * Мигалка аварии. Поверх всей сцены, а не в фоне: когда прод горит,
+   * красным залито всё, включая игрока. Пульс медленный - быстрый на
+   * таком размере кадра читался бы стробоскопом и мешал играть.
+   */
+  private alarm(w: World): void {
+    const pulse = 0.05 + 0.055 * (0.5 + 0.5 * Math.sin(w.ticks / 16));
+    this.paint(0, 0, VIEW.w, VIEW.h, `rgba(224,60,44,${pulse.toFixed(3)})`);
+    // Зарево по краям: центр кадра остаётся читаемым.
+    this.paint.glow(VIEW.w / 2, VIEW.h / 2, VIEW.w * 0.8, "rgba(0,0,0,0)");
+    const edge = 0.10 + 0.08 * (0.5 + 0.5 * Math.sin(w.ticks / 16 + 1));
+    this.paint.grad(0, 0, VIEW.w, 14, `rgba(208,48,74,${edge.toFixed(3)})`, "rgba(208,48,74,0)");
+    this.paint.grad(0, VIEW.h - 14, VIEW.w, 14, "rgba(208,48,74,0)", `rgba(208,48,74,${edge.toFixed(3)})`);
   }
 
   private player(w: World): void {

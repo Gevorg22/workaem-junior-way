@@ -7,5 +7,25 @@ compatibility_date = "2026-09-06"
 [vars]
 GAME_URL = "https://game.workaem.com"
 
+# Таблица рекордов. База создана командой `npx wrangler d1 create junior-way-board`,
+# схема накатывается так:
+#
+#   npx wrangler d1 execute junior-way-board --remote --file schema.sql
+#
+# Привязка называется DB, а не junior_way_board, как предлагает вывод
+# wrangler: под этим именем база видна коду (env.DB в index.js), и менять
+# имя привязки значило бы править код ради вкуса генератора.
+[[d1_databases]]
+binding = "DB"
+database_name = "junior-way-board"
+database_id = "e5d56c64-7a9e-4abf-bb93-8d43a89abb81"
+
+# Секреты (не в репозитории, задаются через `wrangler secret put`):
+#   BOT_TOKEN       - токен бота
+#   WEBHOOK_SECRET  - общий секрет вебхука
+#   BOARD_SALT      - соль для хеша id игрока: в таблице лежит хеш,
+#                     а не сам id
+#   WORKAEM_SECRET  - общий секрет с workaem для проверки токена входа
+
 [observability]
 enabled = true

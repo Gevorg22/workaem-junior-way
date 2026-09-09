@@ -30,9 +30,13 @@
             <span>ГРЕЙД <b id="hud-grade">ДЖУН</b></span>
             <span>СКИЛЛЫ <b id="hud-skills">0</b></span>
             <span>ОЧКИ <b id="hud-score">0</b></span>
+            <span id="hud-time-box">ВРЕМЯ <b id="hud-time">1:15</b></span>
             <span>ЖИЗНИ <b id="hud-lives">♥♥♥</b></span>
             <span id="hud-buffs" class="buffs"></span>
           </span>
+          <!-- Выйти в меню посреди игры было нельзя вовсе: кнопка сверху,
+               потому что во время забега глаза и так в верхней полосе. -->
+          <button type="button" id="hud-menu" class="menu-btn">Меню</button>
         </div>
 
         <canvas id="stage" tabindex="0" aria-label="Путь джуна - платформер про карьеру в IT"></canvas>
@@ -54,17 +58,83 @@
           <h2>Оффер получен</h2>
           <p id="outro-grade">Ты дошёл до грейда ЛИД</p>
           <p id="outro-stats"></p>
+          <p id="outro-place" class="place"></p>
+          <p id="outro-badges" class="badges"></p>
           <div class="actions">
             <a id="jobs-link" class="primary" href="https://www.workaem.com" target="_blank" rel="noopener">
               Вакансии на твой грейд
             </a>
             <a id="share-link" href="https://t.me" target="_blank" rel="noopener">Поделиться</a>
+            <button type="button" id="outro-image">Картинка</button>
             <button type="button" id="replay">Ещё раз</button>
+          </div>
+        </div>
+
+        <!-- Стартовый экран. Раньше игра начиналась сразу с первого кадра,
+             и всё, что помнилось между запусками, было некуда показать:
+             ни рекорда, ни достигнутого уровня, ни значков. -->
+        <div id="start">
+          <h2>Путь джуна</h2>
+          <p id="start-note">Платформер про карьеру в IT: от стажёра до оффера</p>
+          <div class="actions">
+            <button type="button" id="start-play" class="primary">Играть</button>
+            <button type="button" id="start-continue" hidden>Продолжить</button>
+            <button type="button" id="start-stats">Статистика</button>
+          </div>
+          <p id="start-stats"></p>
+
+          <!-- Общая таблица. Показывается только если воркер ответил:
+               без сети игра работает как раньше, просто без соревнования. -->
+          <div id="board" class="board" hidden>
+            <p class="board-head">Весь путь - лучшие забеги целиком</p>
+            <ol id="board-rows"></ol>
+            <p id="board-note"></p>
+          </div>
+
+          <p id="who-line" class="who"></p>
+          <p id="start-badges" class="badges"></p>
+        </div>
+
+        <!-- Конец забега. Здесь и появляется выбор, ради которого всё
+             затевалось: не «сначала», а «продолжить с достигнутого». -->
+        <!-- Статистика по уровням. Уровни, а не забеги: карта каждого
+             уровня у всех одна и та же, поэтому сравнение честное. -->
+        <div id="stats" hidden>
+          <h2>Статистика</h2>
+          <div class="tabs">
+            <button type="button" id="tab-levels" class="on">Уровни</button>
+            <button type="button" id="tab-players">Игроки</button>
+          </div>
+          <p id="stats-note"></p>
+          <ol id="stats-levels"></ol>
+          <div id="stats-players" hidden>
+            <ol id="players-rows"></ol>
+            <div class="pager">
+              <button type="button" id="players-prev">раньше</button>
+              <span id="players-pos"></span>
+              <button type="button" id="players-next">дальше</button>
+              <button type="button" id="players-me" hidden>к моему месту</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" id="stats-back" class="primary">Назад</button>
+          </div>
+        </div>
+
+        <div id="gameover" hidden>
+          <h2>Выгорание</h2>
+          <p id="over-stats"></p>
+          <p id="over-place" class="place"></p>
+          <p id="over-badges" class="badges"></p>
+          <div class="actions">
+            <button type="button" id="over-continue" class="primary">Продолжить</button>
+            <button type="button" id="over-restart">Сначала</button>
+            <button type="button" id="over-menu">В меню</button>
           </div>
         </div>
       </div>
 
-      <p class="hint">Растопчи легаси сверху · созвон не растаптывается · держи прыжок дольше - прыгнешь выше · встань на трубу с чёрным жерлом и жми ▼</p>
+      <p class="hint">Растопчи легаси сверху</p>
       <p class="rotate-hint">Поверни телефон - картинка станет крупнее</p>
 
       <footer class="credits">
@@ -76,7 +146,7 @@
         <a id="tg-link" href="https://t.me/workaem_game_bot"
            target="_blank" rel="noopener">играть в Telegram</a>
         <span aria-hidden="true">·</span>
-        <a href="https://t.me/Gevorg1989" target="_blank" rel="noopener">Геворг Карагозян</a>
+        <a href="https://t.me/Gevorg1989" target="_blank" rel="noopener">Создатель: Геворг Карагозян</a>
       </footer>
     </div>
 

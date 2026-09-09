@@ -34,6 +34,75 @@ export interface Painter {
   poly(pts: Array<readonly [number, number]>, color: string): void;
 }
 
+/**
+ * Кисть поверх канвы. Живёт здесь, а не в рендере: теми же спрайтами
+ * рисуется картинка результата для шеринга, и ей нужна та же кисть.
+ *
+ * Кисть поверх контекста. Координаты НЕ округляются - именно округление
+ * раньше загоняло всё в крупную сетку и делало пиксели видимыми.
+ */
+export function canvasBrush(ctx: CanvasRenderingContext2D): Painter {
+  const brush = ((x: number, y: number, w: number, h: number, color: string): void => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  }) as Painter;
+
+  const path = (color: string, build: () => void): void => {
+    ctx.beginPath();
+    build();
+    ctx.fillStyle = color;
+    ctx.fill();
+  };
+
+  brush.round = (x, y, w, h, r, color) => {
+    const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+    path(color, () => ctx.roundRect(x, y, w, h, rr));
+  };
+
+  brush.circle = (cx, cy, r, color) => {
+    path(color, () => ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2));
+  };
+
+  brush.oval = (cx, cy, rx, ry, color) => {
+    path(color, () => ctx.ellipse(cx, cy, Math.max(0, rx), Math.max(0, ry), 0, 0, Math.PI * 2));
+  };
+
+  brush.grad = (x, y, w, h, top, bottom, r = 0) => {
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    if (r > 0) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2));
+      ctx.fill();
+    } else {
+      ctx.fillRect(x, y, w, h);
+    }
+  };
+
+  brush.glow = (cx, cy, r, color) => {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(0.01, r));
+    g.addColorStop(0, color);
+    g.addColorStop(1, "transparent");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  brush.poly = (pts, color) => {
+    if (pts.length < 3) return;
+    path(color, () => {
+      ctx.moveTo(pts[0]![0], pts[0]![1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1]);
+      ctx.closePath();
+    });
+  };
+
+  return brush;
+}
+
 export interface DevPose {
   face: 1 | -1;
   walking: boolean;
@@ -424,6 +493,65 @@ export function drawLift(p: Painter, x: number, y: number, w: number): void {
   p.grad(x, y, w, 4, PAL.liftLite, PAL.liftDark, 1.6);
   p.round(x + 0.6, y + 0.4, w - 1.2, 1.2, 0.6, "rgba(255,255,255,.3)");
   for (let i = 2.5; i < w - 2; i += 6) p.circle(x + i, y + 2, 0.7, PAL.liftDark);
+}
+
+/**
+ * Ротация: стойка с цепочкой алертов, крутящейся вокруг неё.
+ *
+ * Звенья уменьшаются к концу и светятся ярче к центру - так цепочка
+ * читается именно цепочкой, а не рядом одинаковых точек, и видно, где
+ * у неё ось, вокруг которой всё вращается.
+ */
+export function drawRotor(
+  p: Painter,
+  x: number,
+  y: number,
+  beads: number,
+  angle: number,
+  step: number,
+): void {
+  for (let i = beads; i >= 1; i--) {
+    const bx = x + Math.cos(angle) * i * step;
+    const by = y + Math.sin(angle) * i * step;
+    const r = 3.4 - (i / beads) * 1.1;
+    p.glow(bx, by, r * 2.6, "rgba(255,106,44,.34)");
+    p.circle(bx, by, r, PAL.alert);
+    p.circle(bx, by, r * 0.62, PAL.alertLite);
+    p.circle(bx - r * 0.2, by - r * 0.2, r * 0.28, PAL.alertCore);
+  }
+  // Стойка: серверный шкаф с мигающим индикатором.
+  p.round(x - 4.5, y - 4.5, 9, 9, 2, PAL.rack);
+  p.round(x - 3.4, y - 3.4, 6.8, 3, 1.2, PAL.rackLite);
+  p.circle(x, y, 1.9, PAL.alert);
+  p.circle(x, y, 0.9, PAL.alertCore);
+}
+
+/**
+ * Флагшток оффера. Флаг едет по нему вниз вместе с игроком: чем выше
+ * зацепился, тем дольше едет - и тем крупнее бонус, который за это дают.
+ *
+ * slide - доля спуска: 0 у точки захвата, 1 у земли. Меньше нуля - флаг
+ * ещё наверху, уровень не пройден.
+ */
+export function drawPole(
+  p: Painter,
+  x: number,
+  y: number,
+  h: number,
+  flagY: number,
+): void {
+  // Шест с бликом по левой грани: без него палка читается плоской.
+  p.round(x - 0.2, y - h, 2.4, h, 1, PAL.pipeDark);
+  p.round(x - 0.2, y - h, 0.9, h, 0.45, PAL.pipeLite);
+  p.circle(x + 1, y - h - 1.6, 2.4, PAL.gem);
+  p.circle(x + 0.4, y - h - 2.2, 0.9, PAL.gemLite);
+  p.oval(x + 1, y - 0.6, 4.4, 1.6, PAL.pipeDark);
+
+  // Флаг - конверт с оффером: зелёный прямоугольник с уголком.
+  const fy = flagY;
+  p.round(x + 2, fy - 5, 13, 10, 1.4, PAL.offer);
+  p.round(x + 2, fy - 5, 13, 3.2, 1.4, PAL.offerLite);
+  p.poly([[x + 2.6, fy - 4.4], [x + 8.5, fy + 0.6], [x + 14.4, fy - 4.4]], PAL.offerDark);
 }
 
 /** Брошенный тест - колба, летящая по дуге и вращающаяся. */
