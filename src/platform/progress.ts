@@ -22,7 +22,7 @@ const KEY = "junior-way:progress";
  * Telegram и владельцев аккаунта workaem. У гостя он живёт в памяти
  * страницы и исчезает при перезагрузке.
  *
- * Это не про наказание, а про смысл: рекорд и значки - это утверждение
+ * Это не про наказание, а про смысл: рекорд - это утверждение
  * «я это сделал», и утверждать его должен кто-то, а не безымянный браузер.
  * Играть при этом можно всё и целиком - гость теряет не доступ, а память
  * о себе, и починить это одним нажатием.
@@ -34,31 +34,11 @@ function canSave(): boolean {
 /** Прогресс гостя: живёт до перезагрузки страницы, никуда не пишется. */
 let session: Progress | null = null;
 
-export interface Badge {
-  id: string;
-  label: string;
-  hint: string;
-}
-
-/** Значки за забег. Считаются из RunStats - других данных и не нужно. */
-export const BADGES: Badge[] = [
-  { id: "first", label: "Первый оффер", hint: "пройти хотя бы один уровень" },
-  { id: "no-death", label: "Без единой смерти", hint: "три уровня подряд, ни разу не умерев" },
-  { id: "combo", label: "Цепочка из пяти", hint: "растоптать пятерых, не касаясь земли" },
-  { id: "hundred", label: "Сто скиллов", hint: "собрать сотню скиллов за забег" },
-  { id: "stash", label: "Все заначки", hint: "найти три бонусные комнаты за забег" },
-  { id: "tester", label: "Тестировщик", hint: "убрать десятерых брошенными тестами" },
-  { id: "boss", label: "Собес пройден", hint: "дожать финальное собеседование" },
-  { id: "full", label: "Путь целиком", hint: "пройти все двенадцать уровней" },
-];
-
 export interface Progress {
   /** Лучший счёт за забег с первого уровня. */
   best: number;
   /** Самый дальний достигнутый уровень, с нуля. */
   reached: number;
-  /** Заработанные значки. */
-  badges: string[];
   /**
    * Личный рекорд на каждом уровне: ключ - номер уровня с единицы.
    * Нужен, чтобы экран статистики показывал твои числа даже без сети.
@@ -72,7 +52,7 @@ export interface LevelBest {
   deaths: number;
 }
 
-const EMPTY: Progress = { best: 0, reached: 0, badges: [], levels: {} };
+const EMPTY: Progress = { best: 0, reached: 0, levels: {} };
 
 export function loadProgress(): Progress {
   if (!canSave()) {
@@ -86,7 +66,6 @@ export function loadProgress(): Progress {
     return {
       best: Number(data.best) || 0,
       reached: Number(data.reached) || 0,
-      badges: Array.isArray(data.badges) ? data.badges.filter((b) => typeof b === "string") : [],
       levels: typeof data.levels === "object" && data.levels ? data.levels : {},
     };
   } catch {
@@ -107,28 +86,12 @@ function save(p: Progress): void {
   }
 }
 
-/** Какие значки заслужены этим забегом. */
-export function badgesFor(stats: RunStats, bossDown: boolean): string[] {
-  const earned: string[] = [];
-  if (stats.levelsCleared >= 1) earned.push("first");
-  if (stats.levelsCleared >= 3 && stats.deaths === 0) earned.push("no-death");
-  if (stats.maxCombo >= 5) earned.push("combo");
-  if (stats.skills >= 100) earned.push("hundred");
-  if (stats.pipes >= 3) earned.push("stash");
-  if (stats.tested >= 10) earned.push("tester");
-  if (bossDown) earned.push("boss");
-  if (stats.levelsCleared >= 12) earned.push("full");
-  return earned;
-}
-
 /** Сохраняется ли прогресс - от этого зависит, что показывать на экранах. */
 export function progressSaved(): boolean {
   return canSave();
 }
 
 export interface RunOutcome {
-  /** Значки, полученные впервые именно сейчас. */
-  fresh: Badge[];
   /** Новый личный рекорд. */
   record: boolean;
   progress: Progress;
@@ -140,11 +103,7 @@ export interface RunOutcome {
  * путь. На таблицы уровней это не влияет - там каждый уровень сам себе
  * соревнование, и продолживший с пятого честно в них попадает.
  */
-export function recordRun(
-  stats: RunStats,
-  levelIndex: number,
-  opts: { bossDown?: boolean } = {},
-): RunOutcome {
+export function recordRun(stats: RunStats, levelIndex: number): RunOutcome {
   const p = loadProgress();
   const honest = stats.startLevel === 0;
 
@@ -152,16 +111,8 @@ export function recordRun(
   const record = honest && stats.score > p.best;
   if (record) p.best = stats.score;
 
-  const earned = badgesFor(stats, Boolean(opts.bossDown));
-  const fresh = earned.filter((id) => !p.badges.includes(id));
-  p.badges = [...p.badges, ...fresh];
-
   save(p);
-  return {
-    fresh: fresh.map((id) => BADGES.find((b) => b.id === id)).filter((b): b is Badge => Boolean(b)),
-    record,
-    progress: p,
-  };
+  return { record, progress: p };
 }
 
 /**

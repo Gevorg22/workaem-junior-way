@@ -59,7 +59,6 @@
           <p id="outro-grade">Ты дошёл до грейда ЛИД</p>
           <p id="outro-stats"></p>
           <p id="outro-place" class="place"></p>
-          <p id="outro-badges" class="badges"></p>
           <div class="actions">
             <a id="jobs-link" class="primary" href="https://www.workaem.com" target="_blank" rel="noopener">
               Вакансии на твой грейд
@@ -79,7 +78,7 @@
           <div class="actions">
             <button type="button" id="start-play" class="primary">Играть</button>
             <button type="button" id="start-continue" hidden>Продолжить</button>
-            <button type="button" id="start-stats">Статистика</button>
+            <button type="button" id="start-stats-btn">Статистика</button>
           </div>
           <p id="start-stats"></p>
 
@@ -92,7 +91,6 @@
           </div>
 
           <p id="who-line" class="who"></p>
-          <p id="start-badges" class="badges"></p>
         </div>
 
         <!-- Конец забега. Здесь и появляется выбор, ради которого всё
@@ -125,7 +123,6 @@
           <h2>Выгорание</h2>
           <p id="over-stats"></p>
           <p id="over-place" class="place"></p>
-          <p id="over-badges" class="badges"></p>
           <div class="actions">
             <button type="button" id="over-continue" class="primary">Продолжить</button>
             <button type="button" id="over-restart">Сначала</button>
@@ -134,10 +131,11 @@
         </div>
       </div>
 
-      <p class="hint">Растопчи легаси сверху</p>
       <p class="rotate-hint">Поверни телефон - картинка станет крупнее</p>
 
       <footer class="credits">
+        <span>Растопчи легаси сверху</span>
+        <span aria-hidden="true">·</span>
         <a href="https://www.workaem.com?utm_source=game&utm_medium=footer&utm_campaign=junior-way"
            target="_blank" rel="noopener"><b>workaem</b> - агрегатор IT-вакансий</a>
         <span aria-hidden="true">·</span>

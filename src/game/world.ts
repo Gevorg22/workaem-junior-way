@@ -165,8 +165,6 @@ export class World {
   particles: Particle[] = [];
   /** Всплывающие «+400» и «1UP» над местом события. */
   popups: Popup[] = [];
-  /** Собес пройден в этом забеге - нужно для значка. */
-  bossDown = false;
   rotors: Rotor[] = [];
   /**
    * Сколько врагов растоптано подряд, ни разу не коснувшись земли.
@@ -248,7 +246,6 @@ export class World {
     this.nextLife = SKILLS_PER_LIFE;
     this.combo = 0;
     this.popups = [];
-    this.bossDown = false;
     this.loadLevel(from);
   }
 
@@ -569,7 +566,6 @@ export class World {
     } else {
       b.dying = 72;
       this.questions = [];
-      this.bossDown = true;
       this.emit("bossDown");
     }
   }

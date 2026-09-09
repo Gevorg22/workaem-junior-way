@@ -16,9 +16,7 @@ import type { Board, BoardRow, PlayersPage, Stats } from "./platform/board";
 import {
   account, AUTH_READY, login, loginUrl, logout, pickUpToken, signupUrl,
 } from "./platform/workaem";
-import {
-  BADGES, loadProgress, progressSaved, recordLevel, recordRun,
-} from "./platform/progress";
+import { loadProgress, progressSaved, recordLevel, recordRun } from "./platform/progress";
 import {
   isMuted, play, playMusic, setHurry, stopMusic, suspendAudio, toggleMute, unlock,
 } from "./platform/audio";
@@ -84,7 +82,6 @@ const hud = {
 const outro = need<HTMLElement>("#outro");
 const outroGrade = need<HTMLElement>("#outro-grade");
 const outroStats = need<HTMLElement>("#outro-stats");
-const outroBadges = need<HTMLElement>("#outro-badges");
 const jobsLink = need<HTMLAnchorElement>("#jobs-link");
 const shareLink = need<HTMLAnchorElement>("#share-link");
 const imageBtn = need<HTMLButtonElement>("#outro-image");
@@ -94,9 +91,8 @@ const soundBtn = need<HTMLButtonElement>("#sound");
 const startScreen = need<HTMLElement>("#start");
 const startPlay = need<HTMLButtonElement>("#start-play");
 const startContinue = need<HTMLButtonElement>("#start-continue");
-const startStatsBtn = need<HTMLButtonElement>("#start-stats");
+const startStatsBtn = need<HTMLButtonElement>("#start-stats-btn");
 const startStats = need<HTMLElement>("#start-stats");
-const startBadges = need<HTMLElement>("#start-badges");
 
 const boardBox = need<HTMLElement>("#board");
 const boardRows = need<HTMLElement>("#board-rows");
@@ -120,7 +116,6 @@ const overPlace = need<HTMLElement>("#over-place");
 
 const gameover = need<HTMLElement>("#gameover");
 const overStats = need<HTMLElement>("#over-stats");
-const overBadges = need<HTMLElement>("#over-badges");
 const overContinue = need<HTMLButtonElement>("#over-continue");
 const overRestart = need<HTMLButtonElement>("#over-restart");
 const overMenu = need<HTMLButtonElement>("#over-menu");
@@ -250,18 +245,6 @@ function syncHud(): void {
     world.lives <= 0 ? "-" : world.lives <= 5 ? "♥".repeat(world.lives) : `♥×${world.lives}`;
 }
 
-/**
- * Значки строкой. Заслуженные горят, только что полученные - заливкой:
- * новое должно быть видно сразу, иначе список читается как обои.
- */
-function paintBadges(box: HTMLElement, owned: string[], fresh: string[] = []): void {
-  box.innerHTML = BADGES.map((b) => {
-    const cls = fresh.includes(b.id) ? "fresh" : owned.includes(b.id) ? "on" : "";
-    const title = owned.includes(b.id) ? b.label : b.hint;
-    return `<span class="${cls}" title="${title}">${b.label}</span>`;
-  }).join("");
-}
-
 /** Картинка результата: поделиться, а если браузер не умеет - сохранить. */
 async function shareImage(): Promise<void> {
   const user = currentUser();
@@ -306,13 +289,12 @@ function showOutro(): void {
   const who = user ? `${user.name}, ты` : "Ты";
   const s = world.stats;
 
-  const outcome = recordRun(s, world.levelIndex, { bossDown: world.bossDown });
+  const outcome = recordRun(s, world.levelIndex);
   outroGrade.textContent = `${who} дошёл до грейда ${gradeName(s.levelsCleared)}`;
   outroStats.textContent =
     `Скиллов ${s.skills} · очков ${s.score} · смертей ${s.deaths}` +
     `${s.maxCombo > 1 ? ` · цепочка ${s.maxCombo}` : ""}` +
     `${outcome.record ? " · личный рекорд" : ""}`;
-  paintBadges(outroBadges, outcome.progress.badges, outcome.fresh.map((b) => b.id));
 
   jobsLink.href = `${WORKAEM}/jobs/l/development?utm_source=game&utm_medium=outro&utm_campaign=junior-way`;
 
@@ -344,11 +326,10 @@ function hideOutro(): void {
  */
 function showGameOver(): void {
   const s = world.stats;
-  const outcome = recordRun(s, world.levelIndex, { bossDown: world.bossDown });
+  const outcome = recordRun(s, world.levelIndex);
   overStats.textContent =
     `Уровней ${s.levelsCleared} из ${LEVELS.length} · очков ${s.score} · скиллов ${s.skills}` +
     `${outcome.record ? " · личный рекорд" : ""}`;
-  paintBadges(overBadges, outcome.progress.badges, outcome.fresh.map((b) => b.id));
 
   // Продолжить можно с уровня, на котором забег и оборвался.
   const from = world.levelIndex;
@@ -437,18 +418,16 @@ function paintWho(): void {
   }
 
   // Гость. Играть можно всё и целиком, но ничего не сохраняется - ни
-  // рекорд, ни значки, ни достигнутый уровень, ни статистика. Так честнее:
+  // рекорд, ни достигнутый уровень, ни статистика. Так честнее:
   // утверждение «я это сделал» должен делать кто-то, а не безымянный
   // браузер, - и починить это одним нажатием.
   whoLine.innerHTML =
     "Ты играешь как <b>гость</b>: ничего не сохраняется - ни рекорды, ни статистика. " +
     (AUTH_READY
-      ? '<a href="#" id="wa-in">Войти через workaem</a> или играть '
-      : `Статистика ведётся у игроков из `) +
-    `<a href="${TG_BOT}" target="_blank" rel="noopener">Telegram</a>` +
-    (AUTH_READY
-      ? "."
-      : `; вход через <a href="${signupUrl()}" target="_blank" rel="noopener">аккаунт workaem</a> появится позже.`);
+      ? '<a href="#" id="wa-in">Войти через workaem</a> или играть ' +
+        `<a href="${TG_BOT}" target="_blank" rel="noopener">в Telegram</a>.`
+      : `Статистика ведётся у игроков из <a href="${TG_BOT}" target="_blank" rel="noopener">Telegram</a>; ` +
+        `вход через <a href="${signupUrl()}" target="_blank" rel="noopener">аккаунт workaem</a> сейчас недоступен.`);
 }
 
 whoLine.addEventListener("click", (e) => {
@@ -540,7 +519,7 @@ async function submitRun(box: HTMLElement, photo?: string): Promise<void> {
       `у игроков из <a href="${TG_BOT}" target="_blank" rel="noopener">Telegram</a>` +
       (AUTH_READY
         ? ` и с <a href="${loginUrl()}" target="_blank" rel="noopener">аккаунтом workaem</a>.`
-        : `; вход через <a href="${signupUrl()}" target="_blank" rel="noopener">аккаунт workaem</a> скоро.`);
+        : `; вход через аккаунт workaem сейчас недоступен.`);
     return;
   }
 
@@ -575,7 +554,7 @@ async function submitLevel(): Promise<void> {
   }
 }
 
-/** Стартовый экран: рекорд, значки и выбор, с чего начать. */
+/** Стартовый экран: рекорд и выбор, с чего начать. */
 function showStart(): void {
   const p = loadProgress();
   startContinue.hidden = p.reached === 0;
@@ -583,7 +562,6 @@ function showStart(): void {
   startStats.textContent = p.best
     ? `Личный рекорд ${p.best.toLocaleString("ru-RU")}`
     : "Двенадцать уровней от стажёра до оффера";
-  paintBadges(startBadges, p.badges);
   paintWho();
   paintBoard();
   statsScreen.hidden = true;
