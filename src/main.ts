@@ -724,9 +724,11 @@ function paintPlayers(): void {
         .join("")
     : '<li class="empty">Пока никого - можно стать первым</li>';
 
-  const from = page.total === 0 ? 0 : page.offset + 1;
+  const from = page.offset + 1;
   const to = Math.min(page.offset + page.limit, page.total);
-  playersPos.textContent = `${from}-${to} из ${page.total}`;
+  // На пустой таблице «0-0 из 0» ничего не сообщает, кроме того, что тут
+  // считали. Пусто - значит пусто, и это уже сказано строкой в списке.
+  playersPos.textContent = page.total === 0 ? "" : `${from}-${to} из ${page.total}`;
   playersPrev.disabled = page.offset === 0;
   playersNext.disabled = to >= page.total;
 
