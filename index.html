@@ -71,13 +71,13 @@
 
         <!-- Стартовый экран. Раньше игра начиналась сразу с первого кадра,
              и всё, что помнилось между запусками, было некуда показать:
-             ни рекорда, ни достигнутого уровня, ни значков. -->
+             ни рекорда, ни звёзд. -->
         <div id="start">
           <h2>Путь джуна</h2>
-          <p id="start-note">Платформер про карьеру в IT: от стажёра до оффера</p>
+          <p id="start-note">Платформер про карьеру в IT: четыре мира от стажёра до оффера</p>
           <div class="actions">
             <button type="button" id="start-play" class="primary">Играть</button>
-            <button type="button" id="start-continue" hidden>Продолжить</button>
+            <button type="button" id="start-map">Карта</button>
             <button type="button" id="start-stats-btn">Статистика</button>
           </div>
           <p id="start-stats"></p>
@@ -93,8 +93,6 @@
           <p id="who-line" class="who"></p>
         </div>
 
-        <!-- Конец забега. Здесь и появляется выбор, ради которого всё
-             затевалось: не «сначала», а «продолжить с достигнутого». -->
         <!-- Статистика по уровням. Уровни, а не забеги: карта каждого
              уровня у всех одна и та же, поэтому сравнение честное. -->
         <div id="stats" hidden>
@@ -119,13 +117,26 @@
           </div>
         </div>
 
+        <!-- Карта мира: четыре мира по три уровня и звёзды. Уровни по
+             одному открываются после первого полного прохождения. -->
+        <div id="map" hidden>
+          <h2>Карта</h2>
+          <p id="map-note"></p>
+          <ol id="map-worlds"></ol>
+          <div class="actions">
+            <button type="button" id="map-back" class="primary">Назад</button>
+          </div>
+        </div>
+
+        <!-- Конец забега. Продолжения нет: выгорел - путь с первого уровня.
+             Взамен каждый пройденный уровень восполняет жизни. -->
         <div id="gameover" hidden>
           <h2>Выгорание</h2>
           <p id="over-stats"></p>
+          <p id="over-rule" class="rule">Продолжения нет - путь начинается с первого уровня. Зато каждый пройденный уровень восполняет жизни.</p>
           <p id="over-place" class="place"></p>
           <div class="actions">
-            <button type="button" id="over-continue" class="primary">Продолжить</button>
-            <button type="button" id="over-restart">Сначала</button>
+            <button type="button" id="over-restart" class="primary">Сначала</button>
             <button type="button" id="over-menu">В меню</button>
           </div>
         </div>

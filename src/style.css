@@ -115,7 +115,7 @@ html, body {
 
 /* Экраны поверх игры: старт, конец забега и финал. Все трое устроены
    одинаково, потому что читаются в одном и том же месте кадра. */
-#outro, #start, #gameover, #stats {
+#outro, #start, #gameover, #stats, #map {
   position: absolute;
   inset: 0;
   background: rgba(15, 13, 24, 0.94);
@@ -139,7 +139,7 @@ html, body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-#outro[hidden], #start[hidden], #gameover[hidden], #stats[hidden] { display: none; }
+#outro[hidden], #start[hidden], #gameover[hidden], #stats[hidden], #map[hidden] { display: none; }
 
 /*
  * Ничего внутри экранов не сжимается. На телефоне кадр игры - широкая
@@ -147,9 +147,9 @@ html, body {
  * сплющивалась до одной строки заголовков, а строки исчезали вовсе.
  * Пусть лучше экран прокручивается.
  */
-#outro > *, #start > *, #gameover > *, #stats > * { flex: 0 0 auto; }
+#outro > *, #start > *, #gameover > *, #stats > *, #map > * { flex: 0 0 auto; }
 
-#outro h2, #start h2, #gameover h2, #stats h2 {
+#outro h2, #start h2, #gameover h2, #stats h2, #map h2 {
   font-family: var(--px);
   font-size: clamp(18px, 4vw, 26px);
   color: var(--gold);
@@ -236,6 +236,66 @@ html, body {
 .place { margin: 0; font-size: 12px; color: var(--gold); }
 .place a { color: var(--mint); }
 
+/* Правило под итогом выгорания: почему снова с первого уровня. */
+.rule { margin: 0; max-width: 380px; font-size: 11px; line-height: 1.5; color: var(--dim); }
+.rule[hidden] { display: none; }
+
+/*
+ * Карта мира: четыре строки по три плитки. Замок выделен цветом собеса,
+ * чтобы с первого взгляда было видно, где кончается каждый мир.
+ */
+#map-note { margin: 0; max-width: 440px; font-size: 11px; line-height: 1.5; color: var(--dim); }
+#map-worlds {
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#map-worlds .wname {
+  margin: 0 0 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: left;
+}
+#map-worlds .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tile:not(:disabled):hover { border-color: var(--mint); }
+.tile:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.tile:disabled { cursor: default; opacity: 0.8; }
+.tile.castle { border-color: var(--coral); }
+.tile .code { font-size: 10px; color: var(--dim); }
+.tile .nm {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--px);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile .st { color: var(--gold); letter-spacing: 1px; }
+.tile .sc { min-height: 1.2em; font-size: 10px; color: var(--dim); }
+
 /*
  * Кнопка выхода в меню в шапке. Тише игровых кнопок: ею пользуются раз
  * за сессию, а не постоянно, но во время забега она обязана быть на виду -
@@ -304,7 +364,7 @@ html, body {
 }
 #stats-levels .row:hover { background: rgba(79, 224, 192, 0.07); }
 #stats-levels .row:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
-#stats-levels .lv { color: var(--dim); min-width: 18px; }
+#stats-levels .lv { color: var(--dim); min-width: 26px; }
 #stats-levels .nm { flex: 1 1 auto; }
 #stats-levels .me { color: var(--gold); }
 #stats-levels .pl { color: var(--dim); min-width: 52px; text-align: right; }
@@ -449,7 +509,7 @@ html, body {
 }
 #stats-levels .row:hover { background: rgba(79, 224, 192, 0.07); }
 #stats-levels .row:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
-#stats-levels .lv { color: var(--dim); min-width: 18px; }
+#stats-levels .lv { color: var(--dim); min-width: 26px; }
 #stats-levels .nm { flex: 1 1 auto; }
 #stats-levels .me { color: var(--gold); }
 #stats-levels .pl { color: var(--dim); min-width: 52px; text-align: right; }
@@ -596,7 +656,7 @@ html, body {
 }
 #stats-levels .row:hover { background: rgba(79, 224, 192, 0.07); }
 #stats-levels .row:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
-#stats-levels .lv { color: var(--dim); min-width: 18px; }
+#stats-levels .lv { color: var(--dim); min-width: 26px; }
 #stats-levels .nm { flex: 1 1 auto; }
 #stats-levels .me { color: var(--gold); }
 #stats-levels .pl { color: var(--dim); min-width: 52px; text-align: right; }
@@ -741,7 +801,7 @@ html, body {
 }
 #stats-levels .row:hover { background: rgba(79, 224, 192, 0.07); }
 #stats-levels .row:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
-#stats-levels .lv { color: var(--dim); min-width: 18px; }
+#stats-levels .lv { color: var(--dim); min-width: 26px; }
 #stats-levels .nm { flex: 1 1 auto; }
 #stats-levels .me { color: var(--gold); }
 #stats-levels .pl { color: var(--dim); min-width: 52px; text-align: right; }

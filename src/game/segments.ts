@@ -1,4 +1,4 @@
-import type { FoeKind } from "./types";
+import type { BlockDrop, FoeKind } from "./types";
 
 /**
  * Кусок карты. Уровень собирается из сегментов, а не пишется целиком:
@@ -20,8 +20,6 @@ export interface SegmentFoe {
 export interface Segment {
   id: string;
   width: number;
-  /** С какого уровня сегмент может появляться: 0 - Джун, 3 - Лид. */
-  minLevel: number;
   /** Куски пола: [x, ширина]. Разрывы между ними - ямы. */
   ground: Array<[number, number]>;
   /** Висящие платформы: [x, y, ширина]. */
@@ -41,8 +39,11 @@ export interface Segment {
    * иначе игрок упирается в блок вместо того, чтобы пройти под ним.
    * Прыжок поднимает на 43px, так что достать можно всё вплоть до y=4.
    * Рабочий диапазон y блока: от 4 до 35. Ставим 30-32.
+   *
+   * Вид "hidden" - невидимый ящик с вопросом, по умолчанию с жизнью;
+   * "coins" - кирпич-заначка со скиллами.
    */
-  blocks?: Array<[number, number, "question" | "brick", ("offer" | "tests" | "coffee" | "vacation")?]>;
+  blocks?: Array<[number, number, "question" | "brick" | "coins" | "hidden", BlockDrop?]>;
   /** Движущиеся платформы: [x, y, ширина, ось, размах, скорость]. */
   moving?: Array<[number, number, number, "x" | "y", number, number]>;
   /**
@@ -73,81 +74,64 @@ export const SWAMP_Y = 86;
 export const SEGMENTS: Segment[] = [
   {
     id: "breather",
-    width: 84,
-    minLevel: 0,
-    ground: [[0, 84]],
+    width: 84,    ground: [[0, 84]],
     gems: [[38, 67]],
   },
   {
     id: "step-up",
-    width: 96,
-    minLevel: 0,
-    ground: [[0, 96]],
+    width: 96,    ground: [[0, 96]],
     platforms: [[34, 64, 26], [70, 54, 24]],
     gems: [[36, 58], [72, 45]],
     blocks: [[8, 45, "question", "offer"]],
   },
   {
     id: "patrol",
-    width: 104,
-    minLevel: 0,
-    ground: [[0, 104]],
+    width: 104,    ground: [[0, 104]],
     foes: [{ kind: "legacy", x: 52, span: 34 }],
     gems: [[30, 67], [76, 67]],
   },
   {
     id: "gap-single",
-    width: 100,
-    minLevel: 0,
-    ground: [[0, 38], [64, 36]],
+    width: 100,    ground: [[0, 38], [64, 36]],
     platforms: [[42, 64, 20]],
     gems: [[50, 54]],
   },
   {
     id: "arch",
-    width: 112,
-    minLevel: 0,
-    ground: [[0, 112]],
+    width: 112,    ground: [[0, 112]],
     // Последняя платформа укорочена, чтобы под блоком осталась чистая
     // земля. Задирать блок выше было бы хуже: он повисал бы в стороне
     // от всех опор, и до выпавшего предмета стало бы не добраться.
     platforms: [[30, 64, 22], [58, 54, 22]],
     gems: [[38, 56], [66, 45], [100, 56]],
-    blocks: [[4, 45, "brick"], [96, 45, "question", "coffee"]],
+    // Первый кирпич - заначка: выглядит как все, а на удар отдаёт скиллы.
+    blocks: [[4, 45, "coins"], [96, 45, "question", "coffee"]],
   },
 
   {
     id: "pit-prod",
-    width: 116,
-    minLevel: 1,
-    ground: [[0, 42], [72, 44]],
+    width: 116,    ground: [[0, 42], [72, 44]],
     hazards: [[44, 26]],
     platforms: [[46, 64, 22]],
     gems: [[54, 52]],
   },
   {
     id: "bug-run",
-    width: 120,
-    minLevel: 1,
-    ground: [[0, 120]],
+    width: 120,    ground: [[0, 120]],
     foes: [{ kind: "bug", x: 60, span: 46 }],
     gems: [[26, 67], [94, 67]],
-    blocks: [[40, 45, "brick"], [52, 45, "question", "offer"], [64, 45, "brick"]],
+    blocks: [[40, 45, "brick"], [52, 45, "question", "offer"], [64, 45, "coins"]],
   },
   {
     id: "coffee-straight",
-    width: 108,
-    minLevel: 1,
-    ground: [[0, 108]],
+    width: 108,    ground: [[0, 108]],
     coffee: [[30, 67]],
     gems: [[64, 67], [88, 67]],
     blocks: [[62, 45, "question", "offer"]],
   },
   {
     id: "tower",
-    width: 104,
-    minLevel: 1,
-    ground: [[0, 104]],
+    width: 104,    ground: [[0, 104]],
     platforms: [[20, 64, 22], [48, 57, 22], [74, 46, 24]],
     gems: [[28, 58], [56, 48], [82, 36]],
   },
@@ -160,27 +144,21 @@ export const SEGMENTS: Segment[] = [
     // а балки только делали их непроходимыми для выросшего. Скиллы висят
     // над ямами и собираются в прыжке.
     id: "double-gap",
-    width: 134,
-    minLevel: 1,
-    ground: [[0, 34], [58, 30], [104, 30]],
+    width: 134,    ground: [[0, 34], [58, 30], [104, 30]],
     hazards: [[36, 20], [90, 12]],
     gems: [[44, 54], [94, 52]],
   },
 
   {
     id: "swamp-walk",
-    width: 118,
-    minLevel: 2,
-    ground: [[0, 118]],
+    width: 118,    ground: [[0, 118]],
     swamps: [[34, 56]],
     gems: [[46, 69], [76, 69]],
     foes: [{ kind: "legacy", x: 96, span: 16 }],
   },
   {
     id: "call-guard",
-    width: 122,
-    minLevel: 2,
-    ground: [[0, 122]],
+    width: 122,    ground: [[0, 122]],
     foes: [{ kind: "call", x: 60, y: 64, span: 36 }],
     platforms: [[42, 62, 22], [70, 62, 20]],
     gems: [[50, 52], [78, 52]],
@@ -188,9 +166,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "gauntlet",
-    width: 140,
-    minLevel: 2,
-    ground: [[0, 140]],
+    width: 140,    ground: [[0, 140]],
     foes: [
       { kind: "legacy", x: 44, span: 26 },
       { kind: "bug", x: 100, span: 30 },
@@ -201,9 +177,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "leap-chain",
-    width: 146,
-    minLevel: 2,
-    ground: [[0, 30], [116, 30]],
+    width: 146,    ground: [[0, 30], [116, 30]],
     hazards: [[32, 82]],
     platforms: [[34, 64, 18], [66, 59, 18], [96, 64, 18]],
     gems: [[40, 56], [72, 48], [102, 56]],
@@ -211,9 +185,7 @@ export const SEGMENTS: Segment[] = [
 
   {
     id: "call-swarm",
-    width: 152,
-    minLevel: 3,
-    ground: [[0, 152]],
+    width: 152,    ground: [[0, 152]],
     foes: [
       { kind: "call", x: 46, y: 61, span: 28 },
       { kind: "call", x: 110, y: 49, span: 30 },
@@ -223,9 +195,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "meat-grinder",
-    width: 158,
-    minLevel: 3,
-    ground: [[0, 46], [78, 34], [130, 28]],
+    width: 158,    ground: [[0, 46], [78, 34], [130, 28]],
     hazards: [[48, 28], [114, 14]],
     platforms: [[48, 64, 22], [110, 64, 18]],
     foes: [
@@ -237,18 +207,14 @@ export const SEGMENTS: Segment[] = [
 
   {
     id: "pipes",
-    width: 126,
-    minLevel: 1,
-    ground: [[0, 126]],
+    width: 126,    ground: [[0, 126]],
     pipes: [[26, 14], [78, 20]],
     gems: [[36, 62], [88, 56]],
     foes: [{ kind: "legacy", x: 56, span: 14 }],
   },
   {
     id: "lift",
-    width: 130,
-    minLevel: 2,
-    // Яму держим перепрыгиваемой напрямую. Если её можно пересечь только
+    width: 130,    // Яму держим перепрыгиваемой напрямую. Если её можно пересечь только
     // угадав момент движущейся платформы, уровень превращается в задачу
     // на тайминг - а игру открывают из чата на минуту, а не на подвиг.
     // Лифт остаётся удобным сокращением, а не единственным путём.
@@ -261,9 +227,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "elevator",
-    width: 118,
-    minLevel: 2,
-    ground: [[0, 118]],
+    width: 118,    ground: [[0, 118]],
     moving: [[40, 58, 20, "y", -20, 0.42]],
     platforms: [[80, 46, 24]],
     gems: [[46, 52], [88, 36]],
@@ -271,18 +235,14 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "vacation-stash",
-    width: 112,
-    minLevel: 1,
-    ground: [[0, 112]],
+    width: 112,    ground: [[0, 112]],
     blocks: [[50, 45, "question", "vacation"]],
     platforms: [[20, 62, 16], [76, 62, 20]],
     gems: [[26, 52], [82, 52]],
   },
   {
     id: "test-lab",
-    width: 124,
-    minLevel: 2,
-    ground: [[0, 124]],
+    width: 124,    ground: [[0, 124]],
     blocks: [[34, 45, "brick"], [46, 45, "question", "tests"], [58, 45, "brick"]],
     foes: [{ kind: "bug", x: 92, span: 24 }],
     gems: [[24, 67], [110, 67]],
@@ -292,16 +252,12 @@ export const SEGMENTS: Segment[] = [
 
   {
     id: "coin-arc",
-    width: 104,
-    minLevel: 0,
-    ground: [[0, 104]],
+    width: 104,    ground: [[0, 104]],
     gems: [[24, 70], [38, 58], [52, 50], [66, 58], [80, 70]],
   },
   {
     id: "block-stairs",
-    width: 120,
-    minLevel: 1,
-    ground: [[0, 120]],
+    width: 120,    ground: [[0, 120]],
     // Лестница поднята: под нижней ступенью должен помещаться большой
     // игрок, иначе он упирается в неё, идя по земле.
     blocks: [[20, 54, "brick"], [34, 42, "brick"], [48, 30, "question", "offer"]],
@@ -311,9 +267,7 @@ export const SEGMENTS: Segment[] = [
     // Пара труб: спустился в первую - вышел из второй, минуя середину.
     // Секрет для внимательных, а не обязательный путь.
     id: "warp-pipes",
-    width: 150,
-    minLevel: 1,
-    ground: [[0, 150]],
+    width: 150,    ground: [[0, 150]],
     pipes: [[22, 20, "warp"], [112, 20, "warp"]],
     foes: [{ kind: "legacy", x: 70, span: 20 }],
     gems: [[60, 62], [86, 62]],
@@ -323,45 +277,35 @@ export const SEGMENTS: Segment[] = [
     // чёрное жерло и всё; что именно за ним, узнают только те, кто нажал
     // вниз. Секрет должен быть секретом, а не отмеченным на карте местом.
     id: "bonus-pipe",
-    width: 128,
-    minLevel: 1,
-    ground: [[0, 128]],
+    width: 128,    ground: [[0, 128]],
     pipes: [[52, 20, "bonus"]],
     gems: [[26, 66], [100, 66]],
     foes: [{ kind: "legacy", x: 96, span: 14 }],
   },
   {
     id: "bonus-deep",
-    width: 140,
-    minLevel: 3,
-    ground: [[0, 140]],
+    width: 140,    ground: [[0, 140]],
     pipes: [[30, 16], [92, 24, "bonus"]],
     gems: [[62, 62], [76, 62]],
     foes: [{ kind: "bug", x: 118, span: 16 }],
   },
   {
     id: "pipe-pair",
-    width: 132,
-    minLevel: 1,
-    ground: [[0, 132]],
+    width: 132,    ground: [[0, 132]],
     pipes: [[24, 16], [76, 24]],
     gems: [[46, 58], [60, 58], [110, 62]],
     foes: [{ kind: "legacy", x: 108, span: 16 }],
   },
   {
     id: "narrow-ledges",
-    width: 128,
-    minLevel: 2,
-    ground: [[0, 34], [98, 30]],
+    width: 128,    ground: [[0, 34], [98, 30]],
     hazards: [[36, 60]],
     platforms: [[38, 60, 16], [62, 52, 16], [86, 60, 16]],
     gems: [[44, 48], [68, 40], [92, 48]],
   },
   {
     id: "bug-nest",
-    width: 136,
-    minLevel: 2,
-    ground: [[0, 136]],
+    width: 136,    ground: [[0, 136]],
     foes: [
       { kind: "bug", x: 40, span: 24 },
       { kind: "bug", x: 96, span: 24 },
@@ -371,9 +315,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "swamp-crossing",
-    width: 130,
-    minLevel: 2,
-    ground: [[0, 130]],
+    width: 130,    ground: [[0, 130]],
     swamps: [[28, 70]],
     platforms: [[44, 56, 18], [76, 56, 18]],
     gems: [[50, 44], [82, 44]],
@@ -381,9 +323,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "high-road",
-    width: 142,
-    minLevel: 3,
-    ground: [[0, 40], [104, 38]],
+    width: 142,    ground: [[0, 40], [104, 38]],
     hazards: [[42, 60]],
     platforms: [[36, 58, 26], [70, 58, 26]],
     gems: [[44, 46], [78, 46], [124, 62]],
@@ -391,9 +331,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "double-lift",
-    width: 146,
-    minLevel: 3,
-    ground: [[0, 46], [72, 20], [110, 36]],
+    width: 146,    ground: [[0, 46], [72, 20], [110, 36]],
     hazards: [[48, 22], [94, 14]],
     moving: [[50, 58, 18, "x", 18, 0.5], [96, 58, 16, "y", -16, 0.4]],
     gems: [[52, 46], [88, 40]],
@@ -409,18 +347,14 @@ export const SEGMENTS: Segment[] = [
     // Теперь это ряд поперёк: под ним 33 пикселя, и каждый ящик достаётся
     // снизу.
     id: "brick-row",
-    width: 124,
-    minLevel: 3,
-    ground: [[0, 124]],
+    width: 124,    ground: [[0, 124]],
     blocks: [[40, 45, "brick"], [52, 45, "question", "tests"], [64, 45, "brick"]],
     gems: [[20, 62], [100, 62]],
     foes: [{ kind: "bug", x: 96, span: 18 }],
   },
   {
     id: "call-corridor",
-    width: 150,
-    minLevel: 4,
-    ground: [[0, 150]],
+    width: 150,    ground: [[0, 150]],
     foes: [
       { kind: "call", x: 44, y: 46, span: 22 },
       { kind: "call", x: 106, y: 58, span: 22 },
@@ -430,9 +364,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "prod-run",
-    width: 154,
-    minLevel: 4,
-    ground: [[0, 30], [126, 28]],
+    width: 154,    ground: [[0, 30], [126, 28]],
     hazards: [[32, 92]],
     platforms: [[34, 62, 20], [62, 54, 20], [90, 62, 20]],
     gems: [[40, 50], [68, 42], [96, 50]],
@@ -440,9 +372,7 @@ export const SEGMENTS: Segment[] = [
   },
   {
     id: "treasure",
-    width: 138,
-    minLevel: 4,
-    ground: [[0, 138]],
+    width: 138,    ground: [[0, 138]],
     blocks: [
       [30, 45, "brick"], [44, 45, "question", "vacation"], [58, 45, "brick"],
       [72, 45, "question", "offer"], [86, 45, "brick"],
@@ -456,20 +386,16 @@ export const SEGMENTS: Segment[] = [
     // после первого он трескается и ускоряется. Проще обойти по кирпичам
     // сверху, чем сносить: с техдолгом обычно так и поступают.
     id: "debt-block",
-    width: 132,
-    minLevel: 2,
-    ground: [[0, 132]],
+    width: 132,    ground: [[0, 132]],
     foes: [{ kind: "debt", x: 56, span: 22 }],
-    blocks: [[38, 45, "brick"], [50, 45, "brick"], [62, 45, "question", "coffee"], [74, 45, "brick"]],
+    blocks: [[38, 45, "brick"], [50, 45, "brick"], [62, 45, "question", "coffee"], [74, 45, "coins"]],
     gems: [[44, 30], [68, 30]],
   },
   {
     // Рекрутёр летает волной и сам подтягивается к игроку по высоте.
     // Отойти в сторону не поможет - только растоптать или убежать.
     id: "hr-flight",
-    width: 138,
-    minLevel: 3,
-    ground: [[0, 138]],
+    width: 138,    ground: [[0, 138]],
     foes: [{ kind: "hr", x: 70, y: 58, span: 34 }],
     platforms: [[30, 62, 22], [88, 62, 22]],
     gems: [[38, 50], [96, 50], [64, 68]],
@@ -479,9 +405,7 @@ export const SEGMENTS: Segment[] = [
     // цепочка крутится над головой. Скиллы висят внутри круга - за ними
     // надо прыгнуть между лопастями, а не просто пробежать.
     id: "rotor-hall",
-    width: 132,
-    minLevel: 2,
-    ground: [[0, 132]],
+    width: 132,    ground: [[0, 132]],
     rotors: [[42, 40, 3, 0.045, 0], [96, 40, 3, -0.045, 1.7]],
     gems: [[40, 56], [94, 56], [68, 70]],
     foes: [{ kind: "legacy", x: 68, span: 16 }],
@@ -491,9 +415,7 @@ export const SEGMENTS: Segment[] = [
     // а вот прыгнуть во всю силу тут нельзя: цепочка ходит выше.
     // Ровно то место, где длина прыжка становится решением.
     id: "rotor-gap",
-    width: 144,
-    minLevel: 3,
-    ground: [[0, 46], [72, 72]],
+    width: 144,    ground: [[0, 46], [72, 72]],
     hazards: [[48, 22]],
     rotors: [[59, 32, 3, 0.05, 0.8]],
     gems: [[30, 70], [110, 70], [124, 70]],
@@ -502,9 +424,7 @@ export const SEGMENTS: Segment[] = [
     // Две ротации подряд и лестница между ними: наверху скиллы, внизу
     // спокойная земля. Кусок про выбор, а не про обязательный риск.
     id: "rotor-stairs",
-    width: 150,
-    minLevel: 4,
-    ground: [[0, 150]],
+    width: 150,    ground: [[0, 150]],
     rotors: [[38, 38, 4, 0.038, 0], [110, 38, 4, -0.042, 2.4]],
     platforms: [[64, 62, 24]],
     gems: [[70, 50], [36, 54], [108, 54]],
@@ -513,9 +433,7 @@ export const SEGMENTS: Segment[] = [
   {
     // Двое разом: техдолг внизу, рекрутёр сверху.
     id: "debt-and-hr",
-    width: 156,
-    minLevel: 4,
-    ground: [[0, 156]],
+    width: 156,    ground: [[0, 156]],
     foes: [
       { kind: "debt", x: 46, span: 24 },
       { kind: "hr", x: 106, y: 54, span: 30 },
@@ -541,10 +459,17 @@ export const SEGMENTS: Segment[] = [
  */
 export const ARENA: Segment = {
   id: "arena",
-  width: 300,
-  minLevel: 0,
-  ground: [[0, 300]],
+  width: 300,  ground: [[0, 300]],
   blocks: [[36, 45, "question", "coffee"], [246, 45, "question", "tests"]],
+};
+
+/**
+ * Вес врага в сложности. Легаси топчется, баг быстрее, созвон вообще не
+ * растаптывается. Этими же весами меряется и собранный уровень целиком -
+ * иначе кривая сложности уровней и выбор кусков говорили бы о разном.
+ */
+export const FOE_DANGER: Record<FoeKind, number> = {
+  legacy: 1.5, bug: 2.5, debt: 3, hr: 3.2, call: 3.5,
 };
 
 /**
@@ -557,6 +482,7 @@ export const ARENA: Segment = {
  */
 export function segmentDifficulty(seg: Segment): number {
   let score = 0;
+  for (const f of seg.foes ?? []) score += FOE_DANGER[f.kind];
 
   // Ямы: разрывы между кусками пола.
   const floor = [...seg.ground].sort((a, b) => a[0] - b[0]);
@@ -569,13 +495,6 @@ export function segmentDifficulty(seg: Segment): number {
   const last = floor[floor.length - 1];
   if (last && last[0] + last[1] < seg.width) score += (seg.width - last[0] - last[1]) / 8;
 
-  for (const f of seg.foes ?? []) {
-    score += f.kind === "call" ? 3.5
-      : f.kind === "hr" ? 3.2
-      : f.kind === "debt" ? 3
-      : f.kind === "bug" ? 2.5
-      : 1.5;
-  }
   for (const h of seg.hazards ?? []) score += 1.5 + h[1] / 40;
   for (const sw of seg.swamps ?? []) score += 2 + sw[1] / 50;
   score += (seg.moving?.length ?? 0) * 2;
@@ -587,23 +506,38 @@ export function segmentDifficulty(seg: Segment): number {
   return score * (0.8 + seg.width / 500);
 }
 
+/**
+ * С какого мира кусок может встречаться. Считается из содержимого, а не
+ * проставляется руками, и в этом весь смысл: правило «каждый мир вводит
+ * свою механику» держит код. Кусок с трубой не попадёт в первый мир, даже
+ * если туда его позовёт сид.
+ *
+ *   0 Джун    враги, ящики, ямы, прод
+ *   1 Мидл    трубы, лифты, созвоны
+ *   2 Сеньор  ротации, болото, техдолг
+ *   3 Лид     рекрутёры; стена дедлайна - свойство уровня, а не куска
+ */
+export function segmentWorld(seg: Segment): number {
+  const kinds = new Set((seg.foes ?? []).map((f) => f.kind));
+  if (kinds.has("hr")) return 3;
+  if (seg.rotors?.length || seg.swamps?.length || kinds.has("debt")) return 2;
+  if (seg.pipes?.length || seg.moving?.length || kinds.has("call")) return 1;
+  return 0;
+}
+
 /* Куски с новыми врагами вынесены сюда же, в общую ротацию. */
 
 export const TEACHING: Segment[] = [
   {
     // 1. Пусто. Просто идти. Игрок привыкает к управлению, ничем не рискуя.
     id: "t-walk",
-    width: 120,
-    minLevel: 0,
-    ground: [[0, 120]],
+    width: 120,    ground: [[0, 120]],
   },
   {
     // 2. Первый скилл висит чуть выше роста: чтобы взять, надо подпрыгнуть.
     //    Награда за первый в жизни прыжок, наказания нет.
     id: "t-jump",
-    width: 110,
-    minLevel: 0,
-    ground: [[0, 110]],
+    width: 110,    ground: [[0, 110]],
     gems: [[52, 62]],
   },
   {
@@ -611,9 +545,7 @@ export const TEACHING: Segment[] = [
     //    и упасть некуда: либо перепрыгнешь, либо растопчешь. Оба выхода
     //    работают, и оба чему-то учат.
     id: "t-foe",
-    width: 130,
-    minLevel: 0,
-    ground: [[0, 130]],
+    width: 130,    ground: [[0, 130]],
     foes: [{ kind: "legacy", x: 78, span: 18 }],
     gems: [[30, 70]],
   },
@@ -621,27 +553,21 @@ export const TEACHING: Segment[] = [
     // 4. Первый блок ровно на пути, на высоте удара головой. Мимо не
     //    пройти незамеченным. Внутри оффер - первое знакомство с ростом.
     id: "t-block",
-    width: 116,
-    minLevel: 0,
-    ground: [[0, 116]],
+    width: 116,    ground: [[0, 116]],
     blocks: [[50, 45, "question", "offer"]],
   },
   {
     // 5. Первая яма узкая и без прода на дне: провал стоит возврата
     //    к коммиту, а не мгновенной смерти.
     id: "t-pit",
-    width: 124,
-    minLevel: 0,
-    ground: [[0, 52], [72, 52]],
+    width: 124,    ground: [[0, 52], [72, 52]],
     gems: [[58, 64]],
   },
   {
     // 6. Теперь то же самое вместе: враг перед блоком. Каждый приём уже
     //    знаком по отдельности, ново только сочетание.
     id: "t-combo",
-    width: 138,
-    minLevel: 0,
-    ground: [[0, 138]],
+    width: 138,    ground: [[0, 138]],
     foes: [{ kind: "legacy", x: 46, span: 16 }],
     blocks: [[92, 45, "question", "coffee"]],
     gems: [[70, 66]],
@@ -650,18 +576,14 @@ export const TEACHING: Segment[] = [
     // 7. Яма шире прыжка, но посередине балка. Первый раз, когда прыгать
     //    приходится дважды подряд.
     id: "t-bridge",
-    width: 142,
-    minLevel: 0,
-    ground: [[0, 44], [98, 44]],
+    width: 142,    ground: [[0, 44], [98, 44]],
     platforms: [[56, 62, 26]],
     gems: [[64, 50], [12, 70]],
   },
   {
     // 8. Проверка пройденного: два врага и блок, всё вперемешку.
     id: "t-test",
-    width: 150,
-    minLevel: 0,
-    ground: [[0, 150]],
+    width: 150,    ground: [[0, 150]],
     foes: [
       { kind: "legacy", x: 44, span: 14 },
       { kind: "bug", x: 104, span: 20 },
@@ -681,28 +603,37 @@ export const TEACHING: Segment[] = [
  * под его смысл - её игрок увидит гарантированно, в отличие от любого
  * куска в середине.
  *
- * minLevel тут не работает: эти куски не участвуют в общей ротации,
- * каждый привязан к своему уровню по порядку.
+ * Механики концовка берёт только из своего мира. Иначе ротация, которой
+ * положено появиться в третьем мире, встречалась бы уже в первом - на
+ * единственном куске, который игрок видит наверняка, - и лестница «мир -
+ * новая механика» рассыпалась бы ровно там, где её лучше всего видно.
+ *
+ * В четырёх концовках спрятана жизнь: невидимый ящик там, где прыгают
+ * и так - над скиллом, у подножия ступенек. По одной на мир.
  */
 export const FINALES: Segment[] = [
   {
-    // 1. Стажировка. Лестница из ящиков к первому в жизни офферу:
+    // 1-1 Стажировка. Лестница из ящиков к первому в жизни офферу:
     // на обучающем уровне финал обязан быть наградой, а не проверкой.
+    // Над первым скиллом - невидимый ящик с жизнью: за скиллом прыгнет
+    // каждый, и так человек узнаёт, что в игре вообще есть секреты.
     id: "f-intern",
     width: 132,
-    minLevel: 0,
     ground: [[0, 132]],
-    blocks: [[44, 54, "brick"], [58, 42, "brick"], [72, 30, "question", "offer"]],
+    blocks: [
+      [22, 45, "hidden", "life"],
+      [44, 54, "brick"], [58, 42, "brick"], [72, 30, "question", "offer"],
+    ],
     gems: [[24, 68], [112, 68]],
   },
   {
-    // 2. Галера. Ряд вёсел над головой и надсмотрщики по краям.
+    // 1-2 Галера. Ряд вёсел над головой и надсмотрщики по краям.
+    // Крайнее весло - кирпич-заначка.
     id: "f-galley",
     width: 140,
-    minLevel: 0,
     ground: [[0, 140]],
     blocks: [
-      [40, 45, "brick"], [54, 45, "question", "coffee"], [68, 45, "brick"], [82, 45, "brick"],
+      [40, 45, "brick"], [54, 45, "question", "coffee"], [68, 45, "brick"], [82, 45, "coins"],
     ],
     foes: [
       { kind: "legacy", x: 24, span: 12 },
@@ -711,45 +642,59 @@ export const FINALES: Segment[] = [
     gems: [[46, 30], [76, 30]],
   },
   {
-    // 3. Аутсорс. Три часовых пояса ступенями и созвон, который висит
-    // ровно над средней ступенью - как и положено созвону.
+    // 1-3 Тестовое задание. Две ямы с продом и ящик с оффером между ними:
+    // к первому мини-боссу лучше подойти выросшим - тогда бой прощает
+    // одну ошибку. Ящик у правого края, чтобы выпавший оффер успели
+    // поймать, прежде чем он уйдёт в яму.
+    id: "f-test",
+    width: 150,
+    ground: [[0, 44], [70, 34], [128, 22]],
+    hazards: [[46, 22], [106, 20]],
+    blocks: [[88, 45, "question", "offer"]],
+    gems: [[52, 56], [112, 56]],
+  },
+  {
+    // 2-1 Аутсорс. Три часовых пояса ступенями и созвон, который висит
+    // ровно над средней ступенью - как и положено созвону. У подножия
+    // первой ступени - невидимая жизнь.
     id: "f-outsource",
     width: 146,
-    minLevel: 0,
     ground: [[0, 146]],
+    blocks: [[8, 45, "hidden", "life"]],
     platforms: [[34, 64, 24], [70, 54, 24], [106, 64, 24]],
     foes: [{ kind: "call", x: 88, y: 40, span: 26 }],
     gems: [[42, 54], [78, 44], [114, 54]],
   },
   {
-    // 4. Серверная. Две ротации в коридоре и труба на выходе.
-    id: "f-server",
-    width: 138,
-    minLevel: 0,
-    ground: [[0, 138]],
-    rotors: [[46, 40, 3, 0.05, 0], [96, 40, 3, -0.05, 2.2]],
-    gems: [[44, 56], [94, 56], [70, 68]],
-    pipes: [[118, 16]],
-  },
-  {
-    // 5. Студия. Два лифта над продом: горизонтальный и вертикальный.
-    id: "f-studio",
+    // 2-2 Облако. Два лифта над продом: горизонтальный и вертикальный.
+    id: "f-cloud",
     width: 150,
-    minLevel: 0,
     ground: [[0, 50], [80, 24], [118, 32]],
     hazards: [[52, 26], [106, 10]],
     moving: [[54, 58, 20, "x", 20, 0.5], [102, 58, 16, "y", -16, 0.4]],
     gems: [[60, 46], [104, 40]],
   },
   {
-    // 6. Стартап. Три легаси в ряд на равном шаге - единственное место
-    // в игре, где цепочка из трёх растаптываний собирается сама собой.
-    // Кто поймёт, как это работает, тот и получит жизнь.
+    // 2-3 HR-скрининг. Трубы через прод и созвон между ними: перед
+    // собеседованием - ещё один созвон, как и в жизни. Скиллы лежат
+    // на крышках труб: встал - забрал.
+    id: "f-screening",
+    width: 156,
+    ground: [[0, 40], [66, 90]],
+    hazards: [[42, 22]],
+    pipes: [[84, 18], [122, 26]],
+    foes: [{ kind: "call", x: 104, y: 44, span: 14 }],
+    gems: [[50, 58], [92, 58], [128, 50]],
+  },
+  {
+    // 3-1 Стартап. Три легаси в ряд на равном шаге - место, где цепочка
+    // из трёх растаптываний собирается сама собой. За ними, в невидимом
+    // ящике, спрятана жизнь.
     id: "f-startup",
     width: 152,
-    minLevel: 0,
     ground: [[0, 152]],
     coffee: [[16, 68]],
+    blocks: [[130, 45, "hidden", "life"]],
     foes: [
       { kind: "legacy", x: 60, span: 6 },
       { kind: "legacy", x: 82, span: 6 },
@@ -758,23 +703,10 @@ export const FINALES: Segment[] = [
     gems: [[60, 46], [82, 46], [104, 46]],
   },
   {
-    // 7. Продукт. Горка из ящиков, на вершине отпуск.
-    id: "f-product",
-    width: 148,
-    minLevel: 0,
-    ground: [[0, 148]],
-    blocks: [
-      [36, 54, "brick"], [50, 42, "brick"], [64, 30, "question", "vacation"],
-      [78, 42, "brick"], [92, 54, "brick"],
-    ],
-    gems: [[64, 14], [24, 68], [128, 68]],
-  },
-  {
-    // 8. Легаси. Болото во всю ширину и техдолг посередине: обойти по
+    // 3-2 Легаси. Болото во всю ширину и техдолг посередине: обойти по
     // балкам быстрее, чем сносить, - с техдолгом обычно так и поступают.
     id: "f-legacy",
     width: 150,
-    minLevel: 0,
     ground: [[0, 150]],
     swamps: [[40, 70]],
     platforms: [[54, 60, 20], [86, 60, 20]],
@@ -782,11 +714,10 @@ export const FINALES: Segment[] = [
     gems: [[60, 48], [92, 48]],
   },
   {
-    // 9. Платформа. Мост из балок над продом, а на той стороне ротация
-    // сторожит скиллы: перешёл - решай, лезть за ними или идти дальше.
-    id: "f-platform",
+    // 3-3 Техсобес. Мост из балок над продом, а на той стороне ротация
+    // сторожит скиллы: перешёл - решай, лезть за ними или идти к боссу.
+    id: "f-bridge",
     width: 158,
-    minLevel: 0,
     ground: [[0, 44], [112, 46]],
     hazards: [[46, 64]],
     platforms: [[44, 64, 22], [76, 58, 22], [104, 64, 20]],
@@ -794,27 +725,25 @@ export const FINALES: Segment[] = [
     gems: [[50, 52], [84, 46], [134, 56]],
   },
   {
-    // 10. Корпорация. Три этажа лестницей вверх, на верхнем скиллы,
+    // 4-1 Корпорация. Три этажа лестницей вверх, на верхнем скиллы,
     // между этажами висит созвон.
     id: "f-corp",
     width: 152,
-    minLevel: 0,
     ground: [[0, 152]],
     platforms: [[26, 64, 26], [62, 52, 26], [98, 40, 26]],
     foes: [{ kind: "call", x: 80, y: 66, span: 22 }],
     gems: [[34, 54], [70, 42], [106, 30]],
   },
   {
-    // 11. Своя фирма. Яма с продом, рекрутёр на выходе и ящик с тестами,
+    // 4-2 Хайлоад. Яма с продом, рекрутёр на выходе и ящик с тестами,
     // чтобы было чем от него отбиться.
     //
     // Балки над ямой тут не будет: её низ приходится ровно на дугу прыжка,
     // и выросший игрок бьётся в неё головой посреди ямы. Ровно на этом
     // уже горел кусок double-gap - яма перепрыгивается с ходу, а балка
     // только режет прыжок.
-    id: "f-founder",
+    id: "f-highload",
     width: 160,
-    minLevel: 0,
     ground: [[0, 54], [80, 80]],
     hazards: [[56, 22]],
     blocks: [[104, 45, "question", "tests"]],
@@ -822,14 +751,15 @@ export const FINALES: Segment[] = [
     gems: [[62, 50], [146, 68]],
   },
   {
-    // 12. Оффер. Приёмная перед собесом: ровный пол, кофе и оффер в
-    // ящиках. Последняя передышка - дальше только арена.
+    // 4-3 Оффер. Приёмная перед финальным собесом: ровный пол, кофе и
+    // оффер в ящиках, а над скиллом у выхода - невидимая жизнь.
+    // Последняя передышка - дальше только арена.
     id: "f-offer",
     width: 140,
-    minLevel: 0,
     ground: [[0, 140]],
     blocks: [
       [40, 45, "question", "coffee"], [54, 45, "brick"], [68, 45, "question", "offer"],
+      [96, 30, "hidden", "life"],
     ],
     gems: [[26, 68], [98, 52], [116, 68]],
   },
@@ -837,9 +767,7 @@ export const FINALES: Segment[] = [
 
 export const INTRO: Segment = {
   id: "intro",
-  width: 74,
-  minLevel: 0,
-  ground: [[0, 74]],
+  width: 74,  ground: [[0, 74]],
   gems: [[52, 67]],
 };
 
@@ -849,9 +777,7 @@ export const INTRO: Segment = {
  */
 export const OUTRO: Segment = {
   id: "outro",
-  width: 104,
-  minLevel: 0,
-  ground: [[0, 104]],
+  width: 104,  ground: [[0, 104]],
   platforms: [[20, 78, 8], [28, 67, 8], [36, 59, 8], [44, 50, 8]],
   gems: [[48, 41], [12, 67]],
 };

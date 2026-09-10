@@ -6,7 +6,7 @@
   "description": "Путь джуна - Telegram Mini App платформер про карьеру в IT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && npm run check && npm run check:blocks && npm run check:play && npm run check:sprites && npm run check:float && npm run check:anticheat && npm run check:rules && npm run playtest && vite build",
+    "build": "tsc --noEmit && npm run check && npm run check:blocks && npm run check:play && npm run check:curve && npm run check:sprites && npm run check:float && npm run check:anticheat && npm run check:rules && npm run playtest && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "esbuild scripts/check-levels.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/check.mjs --log-level=error && node node_modules/.cache/check.mjs",
@@ -19,7 +19,8 @@
     "check:float": "esbuild scripts/check-float.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/float.mjs --log-level=error && node node_modules/.cache/float.mjs",
     "check:blocks": "esbuild scripts/check-blocks.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/cb.mjs --log-level=error && node node_modules/.cache/cb.mjs",
     "check:rules": "esbuild scripts/check-rules.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/rules.mjs --log-level=error && node node_modules/.cache/rules.mjs",
-    "check:play": "esbuild scripts/check-play.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/play.mjs --log-level=error && node node_modules/.cache/play.mjs"
+    "check:play": "esbuild scripts/check-play.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/play.mjs --log-level=error && node node_modules/.cache/play.mjs",
+    "check:curve": "esbuild scripts/check-curve.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/curve.mjs --log-level=error && node node_modules/.cache/curve.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

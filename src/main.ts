@@ -1,11 +1,11 @@
 import "./style.css";
-import { LEVELS } from "./game/levels";
+import { levelCode, LEVELS, STAGES_PER_WORLD, WORLDS } from "./game/levels";
 import { renderCard } from "./game/card";
 import { PAL } from "./game/palette";
 import { Renderer } from "./game/render";
 import { RENDER, TICKS_PER_SECOND, TUNING as T, VIEW, VIEW_W_MAX, VIEW_W_MIN } from "./game/tuning";
 import { GRADE_NAMES } from "./game/types";
-import { World } from "./game/world";
+import { countStars, World } from "./game/world";
 import type { WorldEvent } from "./game/world";
 import { Input } from "./platform/input";
 import { currentUser, haptic, isTelegram, notify, setupViewport } from "./platform/telegram";
@@ -16,7 +16,7 @@ import type { Board, BoardRow, PlayersPage, Stats } from "./platform/board";
 import {
   account, AUTH_READY, login, loginUrl, logout, pickUpToken, signupUrl,
 } from "./platform/workaem";
-import { loadProgress, progressSaved, recordLevel, recordRun } from "./platform/progress";
+import { loadProgress, progressSaved, recordLevel, recordRun, totalStars } from "./platform/progress";
 import {
   isMuted, play, playMusic, setHurry, stopMusic, suspendAudio, toggleMute, unlock,
 } from "./platform/audio";
@@ -90,7 +90,7 @@ const soundBtn = need<HTMLButtonElement>("#sound");
 
 const startScreen = need<HTMLElement>("#start");
 const startPlay = need<HTMLButtonElement>("#start-play");
-const startContinue = need<HTMLButtonElement>("#start-continue");
+const startMap = need<HTMLButtonElement>("#start-map");
 const startStatsBtn = need<HTMLButtonElement>("#start-stats-btn");
 const startStats = need<HTMLElement>("#start-stats");
 
@@ -116,9 +116,14 @@ const overPlace = need<HTMLElement>("#over-place");
 
 const gameover = need<HTMLElement>("#gameover");
 const overStats = need<HTMLElement>("#over-stats");
-const overContinue = need<HTMLButtonElement>("#over-continue");
+const overRule = need<HTMLElement>("#over-rule");
 const overRestart = need<HTMLButtonElement>("#over-restart");
 const overMenu = need<HTMLButtonElement>("#over-menu");
+
+const mapScreen = need<HTMLElement>("#map");
+const mapWorlds = need<HTMLElement>("#map-worlds");
+const mapNote = need<HTMLElement>("#map-note");
+const mapBack = need<HTMLButtonElement>("#map-back");
 
 /**
  * Пока открыт стартовый экран или экран конца забега, шаг физики не идёт:
@@ -218,10 +223,12 @@ world.on((event) => {
   // Уровень пройден - отправляем его результат сразу, не дожидаясь конца
   // забега: уровень считается сам за себя.
   if (event === "levelDone") void submitLevel();
+  // Уровень с карты пройден - обратно на карту.
+  if (event === "mapBack") showMap();
 });
 
 function syncHud(): void {
-  hud.level.textContent = `Уровень ${world.levelIndex + 1} · ${world.level.name}`;
+  hud.level.textContent = `Мир ${levelCode(world.levelIndex)} · ${world.level.name}`;
   // В HUD - грейд игрока, а не уровня: он меняется по ходу забега
   // и показывает запас прочности, как размер в платформерах.
   hud.grade.textContent = GRADE_NAMES[world.player.grade] ?? "ДЖУН";
@@ -284,9 +291,13 @@ async function shareImage(): Promise<void> {
   a.click();
 }
 
-/** Грейд по числу пройденных уровней - та же шкала, что и у бота. */
+/**
+ * Грейд по пройденным мирам - та же шкала, что и у бота: замок каждого
+ * мира даёт его грейд, до первого замка - стажёр.
+ */
 function gradeName(cleared: number): string {
-  return ["ДЖУН", "МИДЛ", "СЕНЬОР", "ЛИД", "ЛИД"][Math.min(cleared, 4)] ?? "ДЖУН";
+  const worlds = Math.min(Math.floor(cleared / STAGES_PER_WORLD), WORLDS.length);
+  return worlds === 0 ? "СТАЖЁР" : WORLDS[worlds - 1]?.grade ?? "СТАЖЁР";
 }
 
 /** Финальный экран - единственное место, где игра отдаёт человека продукту. */
@@ -295,7 +306,7 @@ function showOutro(): void {
   const who = user ? `${user.name}, ты` : "Ты";
   const s = world.stats;
 
-  const outcome = recordRun(s, world.levelIndex);
+  const outcome = recordRun(s, true);
   outroGrade.textContent = `${who} дошёл до грейда ${gradeName(s.levelsCleared)}`;
   outroStats.textContent =
     `Скиллов ${s.skills} · очков ${s.score} · смертей ${s.deaths}` +
@@ -325,24 +336,34 @@ function hideOutro(): void {
 }
 
 /**
- * Конец забега. Раньше здесь было только «начать заново», и это главная
- * причина, по которой длинную игру бросают: умер на десятом - и снова
- * стажёром. Теперь можно продолжить с достигнутого уровня; такой забег
- * помечен и рекорд не обновляет.
+ * Конец забега. Продолжения нет: выгорел - путь начинается с первого
+ * уровня. Экран честно говорит об этом и о том, чем это уравновешено:
+ * каждый пройденный уровень восполняет жизни.
+ *
+ * С карты мира - другое дело: там играют один уровень, и выгорание на нём
+ * значит «ещё раз этот же».
  */
 function showGameOver(): void {
   const s = world.stats;
-  const outcome = recordRun(s, world.levelIndex);
-  overStats.textContent =
-    `Уровней ${s.levelsCleared} из ${LEVELS.length} · очков ${s.score} · скиллов ${s.skills}` +
-    `${outcome.record ? " · личный рекорд" : ""}`;
-
-  // Продолжить можно с уровня, на котором забег и оборвался.
-  const from = world.levelIndex;
-  overContinue.hidden = from === 0;
-  overContinue.textContent = `Продолжить с уровня ${from + 1}`;
   gameover.hidden = false;
   paused = true;
+
+  if (world.single) {
+    overStats.textContent = `Мир ${levelCode(world.levelIndex)} · ${world.level.name} не сдан`;
+    overRule.hidden = true;
+    overPlace.textContent = "";
+    overRestart.textContent = "Ещё раз";
+    overMenu.textContent = "Карта";
+    return;
+  }
+
+  const outcome = recordRun(s, false);
+  overStats.textContent =
+    `Пройдено ${s.levelsCleared} из ${LEVELS.length} · очков ${s.score} · скиллов ${s.skills}` +
+    `${outcome.record ? " · личный рекорд" : ""}`;
+  overRule.hidden = false;
+  overRestart.textContent = "Сначала";
+  overMenu.textContent = "В меню";
 
   // Оборвавшийся забег - тоже результат: очки набраны, и место в таблице
   // они занимают. Не отправлять их значило бы засчитывать только тех, кто
@@ -489,16 +510,13 @@ if (import.meta.env.DEV) {
 /**
  * Отправка результата и место в таблице.
  *
- * Гостю показываем не ошибку, а состояние: результат остался в браузере,
- * и вот два способа сохранить его навсегда. Забег с продолжения в таблицу
- * не идёт - об этом тоже честно говорим, иначе человек будет ждать место,
- * которого не будет.
+ * Гостю показываем не ошибку, а состояние: результат нигде не сохранён,
+ * и вот два способа это исправить.
  */
 async function submitRun(box: HTMLElement, photo?: string): Promise<void> {
-  if (world.stats.startLevel > 0) {
-    box.textContent =
-      "Забег с продолжения в общий зачёт не идёт - только полный путь. " +
-      "Уровни при этом засчитаны: они считаются каждый сам за себя.";
+  // Уровень с карты - не забег: в общий зачёт идёт только путь целиком.
+  if (world.single) {
+    box.textContent = "";
     return;
   }
 
@@ -560,27 +578,32 @@ async function submitLevel(): Promise<void> {
   }
 }
 
-/** Стартовый экран: рекорд и выбор, с чего начать. */
+/** Стартовый экран: рекорд, звёзды и выбор - играть или смотреть карту. */
 function showStart(): void {
   const p = loadProgress();
-  startContinue.hidden = p.reached === 0;
-  startContinue.textContent = `Продолжить с уровня ${p.reached + 1}`;
-  startStats.textContent = p.best
-    ? `Личный рекорд ${p.best.toLocaleString("ru-RU")}`
-    : "Двенадцать уровней от стажёра до оффера";
+  const stars = totalStars(p);
+  startStats.textContent = p.best || stars
+    ? `Личный рекорд ${p.best.toLocaleString("ru-RU")} · звёзд ${stars} из ${LEVELS.length * 3}`
+    : "Четыре мира по три уровня, в конце каждого - собес";
   paintWho();
   paintBoard();
   statsScreen.hidden = true;
+  mapScreen.hidden = true;
   startScreen.hidden = false;
   paused = true;
 }
 
-function beginRun(from: number): void {
+/**
+ * Старт. Забег всегда с первого уровня: продолжения с места выгорания нет.
+ * single - один уровень с карты мира.
+ */
+function begin(from: number, single: boolean): void {
   resetReport();
   outroPlace.textContent = "";
   overPlace.textContent = "";
-  world.newRun(from);
+  world.newRun(from, single);
   startScreen.hidden = true;
+  mapScreen.hidden = true;
   hideGameOver();
   hideOutro();
   paused = false;
@@ -588,8 +611,62 @@ function beginRun(from: number): void {
   canvas.focus();
 }
 
-startPlay.addEventListener("click", () => beginRun(0));
-startContinue.addEventListener("click", () => beginRun(loadProgress().reached));
+const beginRun = (): void => begin(0, false);
+
+/**
+ * Карта мира: четыре мира по три уровня и звёзды на каждом. Видна всегда -
+ * как витрина того, что впереди и что уже взято. А играть уровни по одному
+ * она разрешает только после первого полного прохождения: до него путь
+ * один - с первого уровня и до выгорания. Иначе карта стала бы тем самым
+ * продолжением с места смерти, которое убрано нарочно.
+ */
+function showMap(): void {
+  const p = loadProgress();
+  const open = p.beaten;
+  mapWorlds.innerHTML = WORLDS.map((info, wi) => {
+    const tiles = Array.from({ length: STAGES_PER_WORLD }, (_, stage) => {
+      const index = wi * STAGES_PER_WORLD + stage;
+      const lv = LEVELS[index];
+      const best = p.levels[String(index + 1)];
+      // Где ещё не был - там только номер: карта обещает, но не выдаёт.
+      const seen = index <= p.reached;
+      const stars = best ? countStars(best.stars ?? 0) : 0;
+      return (
+        `<button type="button" class="tile${stage === STAGES_PER_WORLD - 1 ? " castle" : ""}" ` +
+        `data-level="${index}"${open ? "" : " disabled"}>` +
+        `<span class="code">${levelCode(index)}</span>` +
+        `<span class="nm">${seen && lv ? lv.name : "???"}</span>` +
+        `<span class="st">${"★".repeat(stars)}${"☆".repeat(3 - stars)}</span>` +
+        `<span class="sc">${best ? best.score.toLocaleString("ru-RU") : ""}</span>` +
+        "</button>"
+      );
+    }).join("");
+    return `<li><p class="wname">Мир ${wi + 1} · ${info.name}</p><div class="tiles">${tiles}</div></li>`;
+  }).join("");
+
+  const stars = `Звёзд ${totalStars(p)} из ${LEVELS.length * 3}: за проход, за все скиллы карты и за норму времени.`;
+  mapNote.textContent = open
+    ? `${stars} Выбери уровень - сыграешь его отдельно.`
+    : `${stars} Уровни по одному откроются после первого полного прохождения, а до тех пор путь один - с первого уровня.`;
+
+  startScreen.hidden = true;
+  statsScreen.hidden = true;
+  hideGameOver();
+  hideOutro();
+  mapScreen.hidden = false;
+  paused = true;
+}
+
+mapWorlds.addEventListener("click", (e) => {
+  const tile = (e.target as HTMLElement).closest<HTMLButtonElement>(".tile");
+  if (!tile || tile.disabled) return;
+  const index = Number(tile.dataset["level"]);
+  if (Number.isInteger(index)) begin(index, true);
+});
+mapBack.addEventListener("click", () => showStart());
+
+startPlay.addEventListener("click", () => beginRun());
+startMap.addEventListener("click", () => showMap());
 /**
  * Экран статистики. Открывается со стартового экрана и из меню; во время
  * игры туда ведёт кнопка «Меню» в шапке - раньше выйти из забега было
@@ -597,6 +674,7 @@ startContinue.addEventListener("click", () => beginRun(loadProgress().reached));
  */
 async function showStats(): Promise<void> {
   startScreen.hidden = true;
+  mapScreen.hidden = true;
   hideGameOver();
   hideOutro();
   statsScreen.hidden = false;
@@ -650,7 +728,7 @@ function paintStats(): void {
 
     return (
       `<li><button type="button" class="row" data-level="${level}">` +
-      `<span class="lv">${level}</span>` +
+      `<span class="lv">${levelCode(i)}</span>` +
       `<span class="nm">${lv.name}</span>` +
       `<span class="me">${meText}</span>` +
       `<span class="pl">${players}</span>` +
@@ -783,14 +861,17 @@ window.addEventListener("keydown", (e) => {
   if (startScreen.hidden) return;
   if (e.code !== "Space" && e.code !== "Enter") return;
   e.preventDefault();
-  beginRun(0);
+  beginRun();
 });
 
-overContinue.addEventListener("click", () => beginRun(world.levelIndex));
-overRestart.addEventListener("click", () => beginRun(0));
+// С карты - тот же уровень ещё раз и обратно на карту; в забеге - только
+// с первого уровня: продолжения с места выгорания нет.
+overRestart.addEventListener("click", () =>
+  world.single ? begin(world.levelIndex, true) : beginRun());
 overMenu.addEventListener("click", () => {
   hideGameOver();
-  showStart();
+  if (world.single) showMap();
+  else showStart();
 });
 imageBtn.addEventListener("click", () => void shareImage());
 
@@ -893,7 +974,7 @@ function frame(now: number): void {
     // что слышно, как правила поменялись, а не только видно ореол.
     const tune = world.player.vacation > 0
       ? "vacation"
-      : world.level.theme === "underground" ? "underground" : "surface";
+      : world.level.theme === "underground" || world.level.theme === "castle" ? "underground" : "surface";
     playMusic(tune);
     setHurry(world.secondsLeft <= T.hurrySeconds && world.phase === "play");
   } else {

@@ -7,32 +7,50 @@
  * запрыгнуть, потому что верх ряда выше вершины прыжка. Всё это было в
  * собранных картах разом: шестьдесят один враг под ящиками, тридцать
  * сквозь опоры, пять над ямами, и ни одна проверка этого не видела.
+ *
+ * Со звёздами добавился ещё один вид нечестности: скилл, до которого не
+ * достать. Раньше он был просто недосягаемой наградой, теперь он делает
+ * невозможной звезду «собрать все скиллы карты».
  */
 import { LEVELS } from "../src/game/levels";
 import { FLYING_FOES, FOE_SIZE, PLAYER_H_BIG, TUNING as T } from "../src/game/tuning";
-import type { LevelSpec } from "../src/game/types";
+import type { LevelSpec, Vec } from "../src/game/types";
 
 const BLOCK = 12;
 /** Столько же запаса закладывает сборка уровня в clampPatrols. */
 const STOMP_ROOM = 4;
+/** Размер скилла - как в столкновениях мира. */
+const GEM_W = 8;
+const GEM_H = 9;
 
 const rise = (T.jumpImpulse * T.jumpImpulse) / (2 * T.gravity);
 
 interface Surface { x: number; y: number; w: number; block: boolean }
 
+/** Как далеко по горизонтали долетает прыжок на скорости уровня, с запасом. */
+function reachOf(lv: LevelSpec): number {
+  const airFrames = (2 * Math.abs(T.jumpImpulse)) / T.gravity;
+  return airFrames * lv.maxSpeed * 0.62;
+}
+
 /**
- * На какие ящики можно встать сверху. Обход от пола: опора считается
+ * Опоры, на которые можно встать. Обход от пола: опора считается
  * достижимой, если до неё можно допрыгнуть с уже достижимой - то есть
  * ноги в верхней точке прыжка выше её верха, а по горизонтали она рядом.
  * Ряд ящиков сам себя «достижимым» не делает: считаем только от пола.
+ * Лифт - опора во всю длину своего хода: где-то на ней он окажется.
  */
-function unreachableBlocks(lv: LevelSpec): Surface[] {
-  const airFrames = (2 * Math.abs(T.jumpImpulse)) / T.gravity;
-  const reach = airFrames * lv.maxSpeed * 0.62;
+function reachable(lv: LevelSpec): { all: Surface[]; reached: Set<Surface> } {
+  const reach = reachOf(lv);
   const all: Surface[] = [
     ...lv.platforms.map((p) => ({ x: p.x, y: p.y, w: p.w, block: false })),
     ...lv.pipes.map((p) => ({ x: p.x, y: p.y, w: p.w, block: false })),
     ...lv.blocks.map((b) => ({ x: b.x, y: b.y, w: BLOCK, block: true })),
+    ...lv.moving.map((m) =>
+      m.axis === "x"
+        ? { x: Math.min(m.x, m.x + m.span), y: m.y, w: m.w + Math.abs(m.span), block: false }
+        : { x: m.x, y: Math.min(m.y, m.y + m.span), w: m.w, block: false },
+    ),
   ];
   const reached = new Set<Surface>(all.filter((s) => s.y === lv.groundY));
 
@@ -51,7 +69,28 @@ function unreachableBlocks(lv: LevelSpec): Surface[] {
       }
     }
   }
+  return { all, reached };
+}
+
+/** Ящики, на которые не встать сверху. */
+function unreachableBlocks(lv: LevelSpec): Surface[] {
+  const { all, reached } = reachable(lv);
   return all.filter((s) => s.block && !reached.has(s));
+}
+
+/**
+ * Скиллы, которые не взять ни с одной достижимой опоры: макушка выросшего
+ * игрока в верхней точке прыжка до них не дотягивается.
+ */
+function unreachableGems(lv: LevelSpec): Vec[] {
+  const { reached } = reachable(lv);
+  const reach = reachOf(lv);
+  const from = [...reached];
+  return lv.gems.filter((g) => !from.some((s) => {
+    const gap = Math.max(g.x - (s.x + s.w), s.x - (g.x + GEM_W), 0);
+    const head = s.y - rise - PLAYER_H_BIG;
+    return gap <= reach && g.y + GEM_H > head && g.y < s.y;
+  }));
 }
 
 let problems = 0;
@@ -89,12 +128,14 @@ LEVELS.forEach((lv, i) => {
   }
 
   for (const b of unreachableBlocks(lv)) found.push(`на ящик x=${b.x} y=${b.y} не встать сверху`);
+  for (const g of unreachableGems(lv)) found.push(`скилл x=${g.x} y=${g.y} не достать - звезда за все скиллы невозможна`);
 
   problems += found.length;
   const grounded = lv.foes.filter((f) => !FLYING_FOES[f.kind]).length;
   console.log(
     `${String(i + 1).padStart(2)}. ${lv.name.padEnd(11)} ` +
       `наземных врагов ${String(grounded).padStart(2)} · ящиков ${String(lv.blocks.length).padStart(2)} · ` +
+      `скиллов ${String(lv.gems.length).padStart(2)} · ` +
       (found.length ? `ПРОБЛЕМ ${found.length}` : "чисто"),
   );
   for (const line of found.slice(0, 4)) console.log(`      ${line}`);
@@ -102,7 +143,7 @@ LEVELS.forEach((lv, i) => {
 
 console.log(
   problems === 0
-    ? "\nкаждого врага можно растоптать, каждый ящик достаётся сверху, по воздуху никто не ходит"
+    ? "\nкаждого врага можно растоптать, каждый ящик и скилл достаётся, по воздуху никто не ходит"
     : `\nПРОБЛЕМ ИГРАБЕЛЬНОСТИ: ${problems}`,
 );
 process.exit(problems === 0 ? 0 : 1);

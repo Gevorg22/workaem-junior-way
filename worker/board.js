@@ -186,10 +186,20 @@ export async function totalsOf(db) {
  */
 export const ALL_TIME = "all";
 
+/**
+ * Сезон таблиц. Карты с мирами - другие карты, и результат «уровня 3» на
+ * старой нарезке с новым несравним, как несравним и забег, в котором можно
+ * было продолжить с места выгорания. Старые строки не удаляются - они
+ * просто больше не показываются: сезон входит в ключ таблицы.
+ */
+const SEASON = "s2";
+export const CAREER = `career:${SEASON}`;
+const LEVEL_PREFIX = `level:${SEASON}:`;
+
 /** Всё, что нужно стартовому экрану, одним ответом - в один запрос. */
 export async function boardOf(db) {
   const [career, totals] = await Promise.all([
-    topOf(db, "career", ALL_TIME),
+    topOf(db, CAREER, ALL_TIME),
     totalsOf(db),
   ]);
   return { career, totals };
@@ -204,15 +214,15 @@ export async function boardOf(db) {
  * честно, а общий счёт за забег - нет: он зависит от того, сколько игрок
  * успел набегать до смерти.
  *
- * Строки уровней лежат в той же таблице runs с mode вида "level:7".
+ * Строки уровней лежат в той же таблице runs с mode вида "level:s2:7".
  * Отдельной таблицы не понадобилось: у забега и у уровня один и тот же
  * набор чисел.
  * ------------------------------------------------------------------ */
 
-export const levelMode = (level) => `level:${level}`;
+export const levelMode = (level) => `${LEVEL_PREFIX}${level}`;
 
 /** Номер уровня из ключа таблицы. */
-const levelOf = (mode) => Number(String(mode).slice("level:".length));
+const levelOf = (mode) => Number(String(mode).slice(LEVEL_PREFIX.length));
 
 /**
  * Сводка по всем уровням одним запросом: сколько игроков и первая тройка.
@@ -224,7 +234,7 @@ export async function levelStats(db) {
     .prepare(
       `WITH bests AS (
          SELECT mode, who, name, MAX(score) AS score, frames FROM runs
-         WHERE mode LIKE 'level:%' GROUP BY mode, who
+         WHERE mode LIKE ?1 GROUP BY mode, who
        ), ranked AS (
          SELECT mode, name, score, frames,
                 ROW_NUMBER() OVER (PARTITION BY mode ORDER BY score DESC) AS rn,
@@ -234,6 +244,7 @@ export async function levelStats(db) {
        SELECT mode, name, score, frames, rn, players FROM ranked
        WHERE rn <= 3 ORDER BY mode, rn`,
     )
+    .bind(`${LEVEL_PREFIX}%`)
     .all();
 
   const byLevel = {};
@@ -252,14 +263,14 @@ export async function myLevels(db, who) {
     .prepare(
       `WITH bests AS (
          SELECT mode, who, MAX(score) AS score, frames FROM runs
-         WHERE mode LIKE 'level:%' GROUP BY mode, who
+         WHERE mode LIKE ?1 GROUP BY mode, who
        )
        SELECT m.mode, m.score, m.frames,
               (SELECT COUNT(*) FROM bests b WHERE b.mode = m.mode AND b.score > m.score) + 1 AS place,
               (SELECT COUNT(*) FROM bests b WHERE b.mode = m.mode) AS players
-       FROM bests m WHERE m.who = ?1`,
+       FROM bests m WHERE m.who = ?2`,
     )
-    .bind(who)
+    .bind(`${LEVEL_PREFIX}%`, who)
     .all();
 
   const mine = {};
@@ -274,7 +285,7 @@ export async function myLevels(db, who) {
 /** Всё, что нужно экрану статистики. Личность необязательна. */
 export async function statsOf(db, who) {
   const [career, levels, totals, mine] = await Promise.all([
-    topOf(db, "career", ALL_TIME),
+    topOf(db, CAREER, ALL_TIME),
     levelStats(db),
     totalsOf(db),
     who ? myLevels(db, who) : Promise.resolve({}),
@@ -302,22 +313,22 @@ export async function playersPage(db, offset = 0, limit = PAGE_SIZE) {
     .prepare(
       `WITH bests AS (
          SELECT who, name, source, MAX(score) AS score, levels, deaths
-         FROM runs WHERE mode = 'career' AND bucket = ?1 GROUP BY who
+         FROM runs WHERE mode = ?4 AND bucket = ?1 GROUP BY who
        )
        SELECT name, source, score, levels, deaths,
               ROW_NUMBER() OVER (ORDER BY score DESC) AS place
        FROM bests ORDER BY score DESC LIMIT ?2 OFFSET ?3`,
     )
-    .bind(ALL_TIME, take, skip)
+    .bind(ALL_TIME, take, skip, CAREER)
     .all();
 
   const counted = await db
     .prepare(
       `SELECT COUNT(*) AS total FROM (
-         SELECT who FROM runs WHERE mode = 'career' AND bucket = ?1 GROUP BY who
+         SELECT who FROM runs WHERE mode = ?2 AND bucket = ?1 GROUP BY who
        )`,
     )
-    .bind(ALL_TIME)
+    .bind(ALL_TIME, CAREER)
     .first();
 
   return { rows: results ?? [], total: counted?.total ?? 0, offset: skip, limit: take };

@@ -1,5 +1,6 @@
-import { PAL, THEME_COLORS, UNDERGROUND } from "./palette";
-import { LEVELS } from "./levels";
+import { CASTLE, PAL, THEME_COLORS, UNDERGROUND } from "./palette";
+import { levelCode, LEVELS, STAGES_PER_WORLD, WORLDS } from "./levels";
+import { STARS } from "./world";
 import { POLE_H, RENDER, ROTOR_STEP, TICKS_PER_SECOND, TUNING as T, VIEW } from "./tuning";
 import {
   drawBlock, drawCheckpoint, drawCoffee, drawDev, drawDoor, drawFoe, drawGem,
@@ -74,7 +75,10 @@ export class Renderer {
     ctx.restore();
     ctx.restore();
 
+    // В замке то же зарево, что и в горящем проде, только вполсилы:
+    // тревога, но не авария.
     if (w.level.theme === "prod") this.alarm(w);
+    else if (w.level.theme === "castle") this.alarm(w, 0.5);
 
     // Табло заначки: сколько осталось. Без него комната - просто комната,
     // и непонятно, почему из неё вдруг выбросило.
@@ -89,35 +93,50 @@ export class Renderer {
     if (w.phase === "intro") {
       // Заставка перед стартом. Та же карточка, что и между уровнями:
       // ритм у игры должен быть один, а не свой экран на каждый случай.
+      // Вторая строка говорит главное про этот уровень: кто ждёт в замке
+      // или что нового принёс мир.
+      const lv = w.level;
+      const info = WORLDS[lv.world];
+      const castle = lv.boss !== null;
+      const about = castle
+        ? `в замке: ${info?.boss ?? "собес"}`
+        : lv.stage === 0 && lv.world > 0
+          ? `новое: ${info?.news ?? ""}`
+          : `мир ${info?.name ?? ""}`;
       this.card(w, {
-        title: `УРОВЕНЬ ${w.levelIndex + 1} ИЗ ${LEVELS.length}`,
-        accent: PAL.gem,
-        big: w.level.name.toUpperCase(),
+        title: `МИР ${levelCode(w.levelIndex)}`,
+        accent: castle ? PAL.shirt : PAL.gem,
+        big: lv.name.toUpperCase(),
         rows: [
-          w.level.mood ? `грейд ${w.level.grade} · ${w.level.mood}` : `грейд ${w.level.grade}`,
-          `жизней ${w.lives} · очков ${w.score}`,
+          about,
+          ...(lv.mood ? [lv.mood] : []),
+          `жизней ${w.lives} · норма ${Renderer.clock(lv.par * TICKS_PER_SECOND)}`,
         ],
         hint: "погнали",
       });
     } else if (w.phase === "clear") {
       const last = w.levelIndex + 1 >= LEVELS.length;
       const done = w.lastLevel;
+      const castle = w.level.stage === STAGES_PER_WORLD - 1;
+      const taken = w.gems.filter((g) => g.taken).length;
       // На карточке - результат именно этого уровня, а не всего забега:
       // уровни и есть то, что игра сравнивает между игроками, а общий счёт
       // за забег зависит от того, сколько успел набегать до смерти.
       const rows = [
         done
-          ? `за уровень ${done.score} · время ${Renderer.clock(done.frames)}`
-          : `очков ${w.score} · скиллов ${w.skills}`,
-        `всего ${w.score} · скиллов ${w.skills} · жизней ${w.lives}`,
+          ? `за уровень ${done.score} · ${Renderer.clock(done.frames)} из ${Renderer.clock(w.par * TICKS_PER_SECOND)}`
+          : `очков ${w.score}`,
+        `скиллов ${taken}/${w.gems.length} · всего ${w.score}`,
       ];
       if (w.levelPlace) rows.push(w.levelPlace);
       this.card(w, {
-        title: last ? "ПОСЛЕДНИЙ РУБЕЖ" : "ГРЕЙД ПОЛУЧЕН",
+        // Замок мира даёт грейд, остальные уровни - просто пройдены.
+        title: castle ? "ГРЕЙД ПОЛУЧЕН" : "УРОВЕНЬ ПРОЙДЕН",
         accent: PAL.door,
-        big: w.level.grade,
+        big: castle ? w.level.grade : w.level.name.toUpperCase(),
+        stars: done?.stars ?? STARS.clear,
         rows,
-        hint: last ? "финальный собес - жми" : "дальше",
+        hint: w.single ? "на карту" : last ? "за оффером" : "дальше",
       });
     } else if (w.phase === "over") {
       this.card(w, {
@@ -160,13 +179,16 @@ export class Renderer {
       rows: string[];
       hint: string;
       celebrate?: boolean;
+      /** Звёзды уровня битами - рисуются рядом под заголовком. */
+      stars?: number;
     },
   ): void {
     const p = this.paint;
     p(0, 0, VIEW.w, VIEW.h, "rgba(12,10,20,.82)");
 
+    const withStars = o.stars !== undefined;
     const cw = Math.min(VIEW.w - 12, 194);
-    const ch = 94;
+    const ch = withStars ? 102 : 94;
     const cx = (VIEW.w - cw) / 2;
     const cy = (VIEW.h - ch) / 2;
 
@@ -179,20 +201,36 @@ export class Renderer {
     this.centered(o.title, cy + 15, o.accent, 9, true);
     this.centered(o.big, cy + 33, PAL.text, 15, true);
 
+    // Три звезды: за проход, за все скиллы карты, за норму времени.
+    // Пустые видны тоже - они и есть причина сыграть уровень ещё раз.
     let ry = cy + 46;
+    if (withStars) {
+      const mask = o.stars ?? 0;
+      [STARS.clear, STARS.gems, STARS.time].forEach((bit, i) => {
+        this.star(VIEW.w / 2 + (i - 1) * 12, cy + 42, 4.4, mask & bit ? PAL.blockLite : "rgba(255,255,255,.16)");
+      });
+      ry = cy + 56;
+    }
+    // Кегль строки подбирается под ширину, как у подписи: на узком телефоне
+    // карточка сужается, а длинная строка иначе вылезала бы за рамку.
     for (const row of o.rows) {
-      this.centered(row, ry, PAL.dim, 6.5);
+      this.ctx.font = "6.5px 'JetBrains Mono', monospace";
+      const rowW = this.ctx.measureText(row).width;
+      this.centered(row, ry, PAL.dim, rowW > cw - 10 ? 6.5 * ((cw - 10) / rowW) : 6.5);
       ry += 9;
     }
 
-    // Полоса пройденного: по точке на уровень, пройденные горят.
+    // Полоса пройденного: по точке на уровень, пройденные горят. Миры
+    // разделены промежутком - видно, сколько осталось до замка.
     const dots = LEVELS.length;
-    const step = Math.min(9, (cw - 24) / dots);
-    const bw = step * dots;
+    const worldGap = 4;
+    const gaps = WORLDS.length - 1;
+    const step = Math.min(9, (cw - 24 - worldGap * gaps) / dots);
+    const bw = step * dots + worldGap * gaps;
     const by = cy + ch - 17;
     const passed = w.phase === "final" ? dots : w.levelIndex + (w.phase === "clear" ? 1 : 0);
     for (let i = 0; i < dots; i++) {
-      const dx = (VIEW.w - bw) / 2 + i * step + step / 2;
+      const dx = (VIEW.w - bw) / 2 + i * step + Math.floor(i / STAGES_PER_WORLD) * worldGap + step / 2;
       p.circle(dx, by, i < passed ? 2 : 1.4, i < passed ? o.accent : "rgba(255,255,255,.18)");
     }
 
@@ -212,6 +250,17 @@ export class Renderer {
         );
       }
     }
+  }
+
+  /** Пятиконечная звезда: чередуем внешний и внутренний радиус. */
+  private star(x: number, y: number, r: number, color: string): void {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const rr = i % 2 === 0 ? r : r * 0.46;
+      pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]);
+    }
+    this.paint.poly(pts, color);
   }
 
   /**
@@ -250,8 +299,10 @@ export class Renderer {
     const p = this.paint;
     const lv = w.level;
 
+    // Подземелье и замок - закрытые помещения: свод вместо неба.
+    const enclosed = lv.theme === "underground" || lv.theme === "castle";
     p(0, 0, VIEW.w, VIEW.h, this.tone(w, "sky"));
-    if (lv.theme === "underground") {
+    if (enclosed) {
       p(0, 0, VIEW.w, 18, this.tone(w, "skyHigh"));
     } else {
       // Небо одним градиентом от глубокого верха к светлому горизонту.
@@ -282,13 +333,17 @@ export class Renderer {
 
     // Под землёй небо и пейзаж не рисуем: вместо них потолок, и он же
     // создаёт то самое ощущение тесноты, ради которого всё затевалось.
-    if (lv.theme === "underground") {
+    if (enclosed) {
       // Потолок: градиент вниз, мягкие швы кладки и капли-сталактиты.
       this.ceiling(w);
       // Своды в глубине: намёк на объём, иначе за потолком пустая плашка.
       for (let i = 0; i < 8; i++) {
         const ax = i * 84 - ((w.camera * 0.22) % 84);
         p.oval(ax + 30, lv.groundY, 34, 26, "rgba(255,255,255,.035)");
+      }
+      // В замке снизу поднимается красное зарево: там, за стеной, прод.
+      if (lv.theme === "castle") {
+        p.grad(0, lv.groundY - 26, VIEW.w, 26, "rgba(224,60,44,0)", "rgba(224,60,44,.22)");
       }
       return;
     }
@@ -309,6 +364,18 @@ export class Renderer {
       for (const [dx, dy, r] of puffs) {
         p.oval(cx + dx * size, cy + dy * size, r * size, r * size * 0.82, this.tone(w, "cloud"));
       }
+    }
+
+    // В небе нет ни города, ни холмов: внизу только облачная гряда, и по
+    // ней видно, как высоко забрались. В ямах между опорами - она же.
+    if (lv.theme === "sky") {
+      for (let c = 0; c < 9; c++) {
+        const cx = c * 44 - ((w.camera * 0.25) % 44);
+        const cy = lv.groundY + 4 + ((c * 13) % 9);
+        p.oval(cx + 22, cy, 30, 12, this.tone(w, "cloudShade"));
+        p.oval(cx + 18, cy - 3, 22, 9, this.tone(w, "cloud"));
+      }
+      return;
     }
 
     // Весь пейзаж обрезается по линии земли. Холмы и гряда рисуются овалами,
@@ -463,8 +530,9 @@ export class Renderer {
       // Толща под куском пола до самого низа кадра. Раньше низ заливался
       // целиком, и яма выглядела коричневой плашкой; теперь между кусками
       // видно фон, и обрыв читается обрывом.
+      // В небе опоры висят в воздухе, толщи под ними нет.
       const below = VIEW.h - (pl.y + pl.h);
-      if (below > 0) {
+      if (below > 0 && lv.theme !== "sky") {
         p.grad(pl.x, pl.y + pl.h, pl.w, below, this.tone(w, "groundEdge"), "#2A1608");
       }
     }
@@ -509,9 +577,14 @@ export class Renderer {
     for (const b of w.blocks) {
       if (!seen(b.x, 12)) continue;
       if (b.broken) continue;
+      // Невидимый ящик не рисуется, пока его не нашли.
+      if (b.hidden && !b.used) continue;
       // Подскок после удара снизу - без него удар не читается.
       const lift = b.bump > 0 ? -Math.round(Math.sin((b.bump / 8) * Math.PI) * 3) : 0;
-      drawBlock(p, b.kind, b.x, b.y + lift, b.used, w.ticks);
+      // Кирпич-заначка выглядит кирпичом, пока не опустеет, а пустая - как
+      // выбитый ящик: иначе её били бы до бесконечности.
+      const look = b.kind === "coins" ? (b.used ? "question" : "brick") : b.kind;
+      drawBlock(p, look, b.x, b.y + lift, b.used, w.ticks);
     }
 
     for (const item of w.items) {
@@ -521,7 +594,8 @@ export class Renderer {
       // и облаков маленькая фигурка теряется, а понять, что именно выпало,
       // нужно за долю секунды - предмет ещё и убегает.
       const halo =
-        item.kind === "offer" ? PAL.offerLite
+        item.kind === "life" ? PAL.shirtLite
+        : item.kind === "offer" ? PAL.offerLite
         : item.kind === "tests" ? PAL.testLite
         : item.kind === "vacation" ? PAL.vacationLite
         : PAL.coffeeLite;
@@ -555,7 +629,10 @@ export class Renderer {
         stride: Math.floor(w.ticks / 7) % 2 === 0,
         flash: (b.hit > 0 || b.dying > 0) && Math.floor(w.ticks / 3) % 2 === 0,
         hp: b.hp,
+        maxHp: b.maxHp,
       });
+      // Кто перед нами - подписью над делениями жизни.
+      if (b.dying === 0) this.centeredAt(b.name, b.x + b.w / 2, b.y - 8, PAL.text, 6);
     }
     for (const q of w.questions) drawQuestion(p, Math.round(q.x), Math.round(q.y), Math.floor(w.ticks / 6) % 2 === 0);
 
@@ -602,18 +679,19 @@ export class Renderer {
     // координатах и столкновения не имеет: игрок, прыгнув с верхней ступени
     // перед дверью, оказывался нарисован поверх камня и будто пролетал
     // сквозь свод. Теперь он уходит ЗА камень - так это и читается.
-    if (lv.theme === "underground") this.ceiling(w);
+    if (lv.theme === "underground" || lv.theme === "castle") this.ceiling(w);
 
     if (w.deadlineX !== null) this.deadline(w);
   }
 
-  /** Свод подземелья. Рисуется дважды: в фоне и поверх всего. */
+  /** Свод подземелья или замка. Рисуется дважды: в фоне и поверх всего. */
   private ceiling(w: World): void {
     const p = this.paint;
-    const lite = UNDERGROUND["groundLite"] ?? PAL.groundLite;
-    const base = UNDERGROUND["ground"] ?? PAL.ground;
-    const dark = UNDERGROUND["groundDark"] ?? PAL.groundDark;
-    const edge = UNDERGROUND["groundEdge"] ?? PAL.groundEdge;
+    const stone = w.level.theme === "castle" ? CASTLE : UNDERGROUND;
+    const lite = stone["groundLite"] ?? PAL.groundLite;
+    const base = stone["ground"] ?? PAL.ground;
+    const dark = stone["groundDark"] ?? PAL.groundDark;
+    const edge = stone["groundEdge"] ?? PAL.groundEdge;
     p.grad(0, 0, VIEW.w, 11, lite, base);
     p.round(0, 9, VIEW.w, 2, 0.8, dark);
     for (let x = 0; x < VIEW.w; x += 12) {
@@ -630,12 +708,12 @@ export class Renderer {
    * красным залито всё, включая игрока. Пульс медленный - быстрый на
    * таком размере кадра читался бы стробоскопом и мешал играть.
    */
-  private alarm(w: World): void {
-    const pulse = 0.05 + 0.055 * (0.5 + 0.5 * Math.sin(w.ticks / 16));
+  private alarm(w: World, strength = 1): void {
+    const pulse = (0.05 + 0.055 * (0.5 + 0.5 * Math.sin(w.ticks / 16))) * strength;
     this.paint(0, 0, VIEW.w, VIEW.h, `rgba(224,60,44,${pulse.toFixed(3)})`);
     // Зарево по краям: центр кадра остаётся читаемым.
     this.paint.glow(VIEW.w / 2, VIEW.h / 2, VIEW.w * 0.8, "rgba(0,0,0,0)");
-    const edge = 0.10 + 0.08 * (0.5 + 0.5 * Math.sin(w.ticks / 16 + 1));
+    const edge = (0.10 + 0.08 * (0.5 + 0.5 * Math.sin(w.ticks / 16 + 1))) * strength;
     this.paint.grad(0, 0, VIEW.w, 14, `rgba(208,48,74,${edge.toFixed(3)})`, "rgba(208,48,74,0)");
     this.paint.grad(0, VIEW.h - 14, VIEW.w, 14, "rgba(208,48,74,0)", `rgba(208,48,74,${edge.toFixed(3)})`);
   }

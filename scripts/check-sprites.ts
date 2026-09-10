@@ -86,7 +86,7 @@ console.log("\nбосс:");
   const H = 30;
   const W = 26;
   for (const hp of [3, 2, 1]) {
-    const b = measure((paint) => drawBoss(paint, 0, 0, W, H, { face: 1, stride: false, flash: false, hp }));
+    const b = measure((paint) => drawBoss(paint, 0, 0, W, H, { face: 1, stride: false, flash: false, hp, maxHp: 3 }));
     // Деления жизни рисуются над головой - это осознанно, поэтому проверяем
     // только низ: босс обязан стоять на своей нижней грани, а не над ней.
     const ok = Math.abs(b.bottom - H) < 0.51;

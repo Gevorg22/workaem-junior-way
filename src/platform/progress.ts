@@ -1,21 +1,24 @@
+import { countStars } from "../game/world";
 import type { RunStats } from "../game/types";
 import { isTelegram } from "./telegram";
 import { account } from "./workaem";
 
 /**
- * Что игра помнит между запусками.
+ * Что игра помнит между запусками: рекорд, звёзды каждого уровня и то,
+ * пройдена ли игра целиком.
  *
- * Двенадцать уровней подряд без права на ошибку - слишком для игры,
- * которую открывают из чата на пять минут: умер на десятом - и снова
- * стажёром. Поэтому достигнутый уровень запоминается, и с него можно
- * продолжить. Такой забег помечается и в общий зачёт не идёт: рекорд
- * должен означать пройденный путь целиком, а не последний его кусок.
+ * Достигнутый уровень больше не место, откуда продолжают: продолжения
+ * нет, выгорел - начинай с первого. Он нужен карте мира, чтобы показать,
+ * докуда игрок уже добирался.
+ *
+ * Ключ со второй версией: карты с мирами - другие карты, и рекорды на
+ * старой нарезке к новой не относятся.
  *
  * Хранилище - localStorage. Оно может быть недоступно (приватный режим,
  * заблокированные куки), поэтому каждое обращение обёрнуто: без памяти
  * игра просто работает как раньше, а не падает.
  */
-const KEY = "junior-way:progress";
+const KEY = "junior-way:progress:2";
 
 /**
  * Прогресс хранится только у тех, чью личность можно проверить: игроков из
@@ -35,13 +38,20 @@ function canSave(): boolean {
 let session: Progress | null = null;
 
 export interface Progress {
-  /** Лучший счёт за забег с первого уровня. */
+  /** Лучший счёт за забег. */
   best: number;
-  /** Самый дальний достигнутый уровень, с нуля. */
+  /** Самый дальний уровень, до которого добирался, с нуля. */
   reached: number;
   /**
+   * Игра пройдена целиком хотя бы раз. Только после этого карта мира
+   * разрешает играть уровни по одному - иначе она стала бы тем самым
+   * продолжением с места выгорания, которое убрано нарочно.
+   */
+  beaten: boolean;
+  /**
    * Личный рекорд на каждом уровне: ключ - номер уровня с единицы.
-   * Нужен, чтобы экран статистики показывал твои числа даже без сети.
+   * Нужен, чтобы экран статистики и карта показывали твои числа даже
+   * без сети.
    */
   levels: Record<string, LevelBest>;
 }
@@ -50,27 +60,30 @@ export interface LevelBest {
   score: number;
   frames: number;
   deaths: number;
+  /** Звёзды битами. Копятся за разные попытки: каждая - своя цель. */
+  stars: number;
 }
 
-const EMPTY: Progress = { best: 0, reached: 0, levels: {} };
+const empty = (): Progress => ({ best: 0, reached: 0, beaten: false, levels: {} });
 
 export function loadProgress(): Progress {
   if (!canSave()) {
-    session ??= { ...EMPTY, levels: {} };
+    session ??= empty();
     return session;
   }
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...EMPTY };
+    if (!raw) return empty();
     const data = JSON.parse(raw) as Partial<Progress>;
     return {
       best: Number(data.best) || 0,
       reached: Number(data.reached) || 0,
+      beaten: data.beaten === true,
       levels: typeof data.levels === "object" && data.levels ? data.levels : {},
     };
   } catch {
     // Испорченная или недоступная память - начинаем с чистого листа.
-    return { ...EMPTY };
+    return empty();
   }
 }
 
@@ -91,6 +104,11 @@ export function progressSaved(): boolean {
   return canSave();
 }
 
+/** Сколько звёзд собрано на всех уровнях. */
+export function totalStars(p: Progress): number {
+  return Object.values(p.levels).reduce((sum, lv) => sum + countStars(lv.stars ?? 0), 0);
+}
+
 export interface RunOutcome {
   /** Новый личный рекорд. */
   record: boolean;
@@ -98,19 +116,16 @@ export interface RunOutcome {
 }
 
 /**
- * Записать итог забега. Забег с продолжения общий рекорд не обновляет:
- * иначе он означал бы «стартовал с одиннадцатого уровня», а не пройденный
- * путь. На таблицы уровней это не влияет - там каждый уровень сам себе
- * соревнование, и продолживший с пятого честно в них попадает.
+ * Записать итог забега. Уровни с карты сюда не попадают: там играют
+ * один уровень, и рекордом забега это быть не может.
+ *
+ * @param finished - дошёл до оффера. Открывает карту мира.
  */
-export function recordRun(stats: RunStats, levelIndex: number): RunOutcome {
+export function recordRun(stats: RunStats, finished: boolean): RunOutcome {
   const p = loadProgress();
-  const honest = stats.startLevel === 0;
-
-  if (levelIndex > p.reached) p.reached = levelIndex;
-  const record = honest && stats.score > p.best;
+  const record = stats.score > p.best;
   if (record) p.best = stats.score;
-
+  if (finished) p.beaten = true;
   save(p);
   return { record, progress: p };
 }
@@ -120,22 +135,26 @@ export function recordRun(stats: RunStats, levelIndex: number): RunOutcome {
  * в меню посреди игры можно в любой момент, и пройденное не должно
  * пропадать вместе с забегом.
  *
- * @returns true, если это личный рекорд уровня.
+ * Звёзды копятся отдельно от очков: попытка, собравшая все скиллы, но
+ * медленная, всё равно приносит свою звезду, даже если рекорд не побит.
+ *
+ * @returns true, если это личный рекорд уровня по очкам.
  */
 export function recordLevel(
   level: number,
-  result: { score: number; frames: number; deaths: number },
+  result: { score: number; frames: number; deaths: number; stars: number },
 ): boolean {
   const p = loadProgress();
   const key = String(level);
   const was = p.levels[key];
-  // Достигнутый уровень запоминаем здесь же: до этого он записывался только
-  // в конце забега, и выход в меню посреди пути его терял.
-  if (level > p.reached) p.reached = level - 1;
+  // Пройденный уровень открывает на карте следующий.
+  if (level > p.reached) p.reached = level;
   const better = !was || result.score > was.score;
-  if (better) {
-    p.levels = { ...p.levels, [key]: { score: result.score, frames: result.frames, deaths: result.deaths } };
-  }
+  const stars = (was?.stars ?? 0) | result.stars;
+  const kept = better
+    ? { score: result.score, frames: result.frames, deaths: result.deaths, stars }
+    : { ...was!, stars };
+  p.levels = { ...p.levels, [key]: kept };
   save(p);
   return better;
 }

@@ -455,6 +455,16 @@ export function drawBlock(
  * Свечение вокруг отделяет предмет от пёстрого фона.
  */
 export function drawItem(p: Painter, kind: BlockDrop, x: number, y: number): void {
+  // Жизнь - сердце, как в шапке: без подписи понятно, что это она.
+  if (kind === "life") {
+    p.glow(x + 5, y + 5, 8, "rgba(255,110,130,.34)");
+    p.circle(x + 3.2, y + 3.8, 2.6, PAL.shirt);
+    p.circle(x + 6.8, y + 3.8, 2.6, PAL.shirt);
+    p.poly([[x + 0.7, y + 4.6], [x + 9.3, y + 4.6], [x + 5, y + 9.4]], PAL.shirt);
+    p.circle(x + 2.6, y + 3, 0.8, "rgba(255,255,255,.6)");
+    return;
+  }
+
   if (kind === "tests") {
     p.glow(x + 5, y + 5, 7, "rgba(122,240,200,.28)");
     p.round(x + 3.4, y - 0.2, 3.2, 2.4, 0.6, PAL.testDark);
@@ -603,7 +613,7 @@ export function drawBoss(
   y: number,
   w: number,
   h: number,
-  opts: { face: 1 | -1; stride: boolean; flash: boolean; hp: number },
+  opts: { face: 1 | -1; stride: boolean; flash: boolean; hp: number; maxHp: number },
 ): void {
   const lite = opts.flash ? PAL.bossHurt : PAL.bossLite;
   const dark = PAL.bossDark;
@@ -626,7 +636,7 @@ export function drawBoss(
   p.grad(x + 3.2, y + 3.2, w - 6.4, 13.2, opts.flash ? PAL.bossHurt : "#12505F", opts.flash ? PAL.bossHurt : PAL.bossScreen, 1.6);
 
   // Глаза. С каждым потерянным хп прищур злее - видно, что бой к концу.
-  const squint = 3 - opts.hp;
+  const squint = opts.maxHp - opts.hp;
   const eyeY = y + 8 + squint * 0.7;
   const eyeR = Math.max(0.9, 2 - squint * 0.35);
   const dx = opts.face > 0 ? 0.5 : -0.5;
@@ -639,8 +649,10 @@ export function drawBoss(
   p.round(x + 8 - squint, y + 13, w - 16 + squint * 2, 1.1, 0.55, PAL.bossGlow);
 
   // Оставшиеся этапы собеседования - прямо над головой, где смотрит игрок.
-  for (let i = 0; i < 3; i++) {
-    p.round(x + 4 + i * 7, y - 5, 5, 3, 1.2, i < opts.hp ? PAL.bossTie : dark);
+  // По центру: у тестового задания их два, у техсобеса три.
+  const first = cx - (opts.maxHp * 7 - 2) / 2;
+  for (let i = 0; i < opts.maxHp; i++) {
+    p.round(first + i * 7, y - 5, 5, 3, 1.2, i < opts.hp ? PAL.bossTie : dark);
   }
 }
 

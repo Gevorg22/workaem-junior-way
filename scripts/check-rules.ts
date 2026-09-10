@@ -12,12 +12,20 @@
  *   сотня скиллов даёт жизнь;
  *   верхушка флагштока дороже основания;
  *   финиш доводит уровень до зачёта, а не подвешивает его;
- *   бонусная комната возвращает мир таким же, каким взяла.
+ *   бонусная комната возвращает мир таким же, каким взяла;
+ *   пройденный уровень восполняет жизни, выгорание начинает путь сначала;
+ *   звёзды даются за проход, за все скиллы и за норму времени;
+ *   невидимый ящик ловит только удар снизу, заначка отдаёт свои скиллы;
+ *   в каждом замке мини-босс, механики мира не приходят раньше времени;
+ *   уровень с карты возвращает на карту, а не ведёт дальше.
  */
-import { bonusRoom, LEVELS, ROOM_GEMS } from "../src/game/levels";
-import { World } from "../src/game/world";
 import {
-  COMBO_SCORE, INTRO_FRAMES, PLAYER_H_SMALL, POLE_H, SKILLS_PER_LIFE, TUNING as T,
+  bonusRoom, levelCode, LEVELS, ROOM_GEMS, STAGES_PER_WORLD, WORLDS,
+} from "../src/game/levels";
+import { countStars, STARS, World } from "../src/game/world";
+import {
+  COIN_HITS, COMBO_SCORE, INTRO_FRAMES, MAX_CARRY_LIVES, PLAYER_H_BIG, PLAYER_H_SMALL, POLE_H,
+  SKILLS_PER_LIFE, TICKS_PER_SECOND, TUNING as T, VIEW,
 } from "../src/game/tuning";
 import { GROUND_Y } from "../src/game/segments";
 import type { InputState, LevelResult } from "../src/game/world";
@@ -44,6 +52,16 @@ function foeAt(x: number, y: number) {
     kind: "legacy" as const, x, y, baseY: y, min: x - 2, max: x + 2,
     dir: 1 as const, speed: 0, w: 12, h: 10, squashed: 0, hp: 1,
   };
+}
+
+/** Довести уровень до зачёта: встать у флагштока и дождаться конца анимации. */
+function finish(w: World): void {
+  const p = w.player;
+  w.boss = null;
+  p.x = w.level.pole.x - 4;
+  p.y = w.level.groundY - p.h - 1;
+  w.update({ ...idle, right: true });
+  for (let n = 0; n < 400 && w.phase === "signing"; n++) w.update(idle);
 }
 
 console.log("заставка и фазы");
@@ -209,10 +227,6 @@ console.log("\nбонусные комнаты");
 
 console.log("\nрезультат уровня");
 {
-  const w = new World();
-  w.newRun(3);
-  ok(w.levelIndex === 3 && w.stats.startLevel === 3, "продолжение помечено startLevel");
-
   // Уровень считается сам за себя, поэтому его результат обязан появиться
   // на финише - и не тащить в себе бонус за принесённые с собой жизни.
   const g = new World();
@@ -246,6 +260,208 @@ console.log("\nрезультат уровня");
     ok(!checkLevel({ ...done, frames: 60 }).ok, "уровень за секунду отвергается");
     ok(!checkLevel({ ...done, level: 99 }).ok, "несуществующий уровень отвергается");
   }
+}
+
+console.log("\nжизни и выгорание");
+{
+  const w = new World();
+  w.phase = "clear";
+  w.lives = 1;
+  w.advance();
+  ok(w.levelIndex === 1 && w.lives === T.startLives, `пройденный уровень восполняет жизни: 1 -> ${w.lives}`);
+
+  const spare = new World();
+  spare.phase = "clear";
+  spare.lives = T.startLives + 1;
+  spare.advance();
+  ok(spare.lives === T.startLives + 1, "лишняя жизнь при переходе не сгорает");
+
+  const rich = new World();
+  rich.phase = "clear";
+  rich.lives = 12;
+  rich.advance();
+  ok(rich.lives === MAX_CARRY_LIVES, `копилка переносится не больше ${MAX_CARRY_LIVES}: ${rich.lives}`);
+
+  const burnt = new World();
+  burnt.loadLevel(7);
+  burnt.phase = "play";
+  burnt.lives = 1;
+  burnt.player.y = VIEW.h + 60;
+  burnt.update(idle);
+  ok(burnt.phase === "over", "последняя жизнь в яме - выгорание");
+  burnt.advance();
+  ok(
+    burnt.levelIndex === 0 && burnt.lives === T.startLives && burnt.stats.startLevel === 0,
+    "после выгорания путь с первого уровня, продолжения нет",
+  );
+}
+
+console.log("\nзвёзды");
+{
+  const perfect = new World();
+  perfect.loadLevel(1);
+  perfect.phase = "play";
+  for (const g of perfect.gems) g.taken = true;
+  finish(perfect);
+  const all = perfect.lastLevel?.stars ?? 0;
+  ok(countStars(all) === 3, `все скиллы и в норму - три звезды: ${countStars(all)}`);
+
+  const slow = new World();
+  slow.loadLevel(1);
+  slow.phase = "play";
+  slow.stats.frames = (slow.par + 5) * TICKS_PER_SECOND;
+  finish(slow);
+  const one = slow.lastLevel?.stars ?? 0;
+  ok(one === STARS.clear, `без скиллов и не в норму - только звезда за проход: ${countStars(one)}`);
+  ok(
+    LEVELS.every((lv) => lv.par >= 20 && lv.par % 5 === 0),
+    `у каждого уровня своя норма, кратная пяти секундам: ${LEVELS.map((lv) => lv.par).join(", ")}`,
+  );
+}
+
+console.log("\nсекреты");
+{
+  const w = new World();
+  w.loadLevel(0);
+  w.phase = "play";
+  w.foes = [];
+  w.gems = [];
+  const box = w.blocks.find((b) => b.hidden);
+  ok(box !== undefined, "на первом уровне спрятан невидимый ящик");
+  if (box) {
+    // Камеру - к ящику: предметы за краем кадра мир убирает, и сердце
+    // исчезло бы раньше, чем его поймают.
+    w.camera = box.x - VIEW.w / 2;
+    const p = w.player;
+    // Сбоку, на бегу, - насквозь.
+    p.x = box.x - p.w - 1;
+    p.y = box.y + 1;
+    p.vx = 1.2;
+    p.vy = 0;
+    p.hurt = 0;
+    w.update({ ...idle, right: true });
+    ok(p.x > box.x - p.w && !box.used, "сбоку невидимый ящик не держит и не проявляется");
+
+    // Снизу, в прыжке, - проявляется и отдаёт жизнь.
+    p.x = box.x + 2;
+    p.y = box.y + 13;
+    p.vy = -3;
+    w.update({ ...idle, jump: true });
+    ok(box.used, "удар снизу проявляет ящик");
+    const heart = w.items.find((i) => i.kind === "life");
+    ok(heart !== undefined, "из него выходит жизнь");
+    if (heart) {
+      // Сердце уже выехало на крышу ящика - ловим его там. Внутри самого
+      // ящика ловить нельзя: проявившийся ящик твёрд и выталкивает игрока.
+      const lives = w.lives;
+      heart.rise = 0;
+      heart.y = box.y - 12;
+      p.x = heart.x;
+      p.y = heart.y - 1;
+      p.vy = 0;
+      p.hurt = 0;
+      w.update(idle);
+      ok(w.lives === lives + 1, `сердце даёт жизнь: ${lives} -> ${w.lives}`);
+    }
+  }
+  const hiddenLives = LEVELS.map((lv) => lv.blocks.filter((b) => b.hidden && b.drop === "life").length);
+  ok(
+    WORLDS.every((_, wi) => hiddenLives.slice(wi * STAGES_PER_WORLD, (wi + 1) * STAGES_PER_WORLD).some((n) => n > 0)),
+    `в каждом мире спрятана жизнь: ${hiddenLives.join(" ")}`,
+  );
+}
+{
+  const index = LEVELS.findIndex((lv) => lv.blocks.some((b) => b.kind === "coins"));
+  ok(index >= 0, `кирпич-заначка встречается уже на ${levelCode(index)}`);
+  const w = new World();
+  w.loadLevel(index);
+  w.phase = "play";
+  w.foes = [];
+  w.gems = [];
+  const brick = w.blocks.find((b) => b.kind === "coins")!;
+  const p = w.player;
+  // Сеньор - чтобы убедиться, что заначку он не разбивает, как обычный кирпич.
+  p.grade = 2;
+  p.h = PLAYER_H_BIG;
+  let got = 0;
+  for (let i = 0; i < COIN_HITS + 4; i++) {
+    const before = w.skills;
+    brick.bump = 0;
+    p.x = brick.x + 2;
+    p.y = brick.y + 13;
+    p.vy = -3;
+    p.hurt = 0;
+    w.update({ ...idle, jump: true });
+    got += w.skills - before;
+  }
+  ok(got === COIN_HITS, `кирпич-заначка отдаёт ${got} скиллов из ${COIN_HITS}`);
+  ok(!brick.broken && brick.used, "сеньор её не разбивает, а пустая гаснет");
+}
+
+console.log("\nмиры и замки");
+{
+  ok(LEVELS.length === WORLDS.length * STAGES_PER_WORLD, `${WORLDS.length} мира по ${STAGES_PER_WORLD} уровня`);
+  ok(
+    LEVELS.every((lv, i) => (i % STAGES_PER_WORLD === STAGES_PER_WORLD - 1) === (lv.boss !== null)),
+    "мини-босс есть в каждом замке и только там",
+  );
+  ok(
+    LEVELS.every((lv, i) => i % STAGES_PER_WORLD !== STAGES_PER_WORLD - 1 || lv.theme === "castle"),
+    "третий уровень мира - замок",
+  );
+  ok(
+    LEVELS.every((lv, i) => i % STAGES_PER_WORLD !== 1 || lv.theme === "underground" || lv.theme === "sky"),
+    "второй уровень мира - подземелье или небо",
+  );
+  const test = LEVELS[STAGES_PER_WORLD - 1]?.boss;
+  const final = LEVELS[LEVELS.length - 1]?.boss;
+  ok(
+    !!test && !!final && test.maxHp < final.maxHp && test.throwEvery === 0 && final.throwEvery > 0,
+    "тестовое задание мягче финального собеса",
+  );
+
+  // Механика мира не приходит раньше своего мира - ни в середине, ни в концовке.
+  for (const [i, lv] of LEVELS.entries()) {
+    const kinds = new Set(lv.foes.map((f) => f.kind));
+    const early: string[] = [];
+    if (lv.world < 1 && (lv.pipes.length || lv.moving.length || kinds.has("call"))) early.push("трубы, лифты или созвоны");
+    if (lv.world < 2 && (lv.rotors.length || lv.swamps.length || kinds.has("debt"))) early.push("ротации, болото или техдолг");
+    if (lv.world < 3 && (kinds.has("hr") || lv.deadlineSpeed > 0)) early.push("рекрутёры или дедлайн");
+    if (early.length) ok(false, `${levelCode(i)} ${lv.name}: раньше своего мира - ${early.join(", ")}`);
+  }
+
+  // Бой: тестовое задание не кидается, HR уже кидается вопросами.
+  const fight = (index: number): number => {
+    const w = new World();
+    w.loadLevel(index);
+    w.phase = "play";
+    w.lives = 99;
+    const b = w.boss!;
+    w.player.x = b.min + 4;
+    w.player.y = w.level.groundY - w.player.h - 1;
+    let most = 0;
+    for (let n = 0; n < 600; n++) {
+      w.update(idle);
+      most = Math.max(most, w.questions.length);
+    }
+    return most;
+  };
+  ok(fight(STAGES_PER_WORLD - 1) === 0, "тестовое задание вопросов не кидает");
+  ok(fight(STAGES_PER_WORLD * 2 - 1) > 0, "HR-скрининг кидается вопросами");
+}
+
+console.log("\nкарта мира");
+{
+  const w = new World();
+  const seen: string[] = [];
+  w.on((e) => seen.push(e));
+  w.newRun(4, true);
+  ok(w.single && w.levelIndex === 4, "уровень с карты начинается сразу с него");
+  w.phase = "play";
+  finish(w);
+  ok(w.phase === "clear", "уровень с карты доходит до зачёта");
+  w.advance();
+  ok(seen.includes("mapBack") && w.levelIndex === 4, "после зачёта - обратно на карту, а не на следующий уровень");
 }
 
 console.log("\nтаблица рекордов");

@@ -10,18 +10,25 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LEVELS, ROOM_GEMS } from "../src/game/levels";
-import { COMBO_SCORE, POLE_BONUS_MAX, TUNING } from "../src/game/tuning";
+import { COIN_HITS, COMBO_SCORE, MAX_CARRY_LIVES, POLE_BONUS_MAX, TUNING } from "../src/game/tuning";
+import type { LevelSpec } from "../src/game/types";
 
 const totalWidth = LEVELS.reduce((sum, lv) => sum + lv.width, 0);
-// Скиллы из бонусных комнат считаются наравне с картовыми: иначе честный
-// игрок, нашедший все заначки, соберёт больше, чем воркер считает возможным,
-// и будет отвергнут как накрутчик. Комната открывается один раз на трубу.
-const roomGems = LEVELS.reduce(
-  (sum, lv) => sum + lv.pipes.filter((pipe) => pipe.bonus).length * ROOM_GEMS,
+// Скиллы из бонусных комнат и кирпичей-заначек считаются наравне с
+// картовыми: иначе честный игрок, нашедший все секреты, соберёт больше,
+// чем воркер считает возможным, и будет отвергнут как накрутчик.
+// Комната открывается один раз на трубу, заначка пустеет после COIN_HITS.
+const stashOf = (lv: LevelSpec): number =>
+  lv.pipes.filter((pipe) => pipe.bonus).length * ROOM_GEMS +
+  lv.blocks.filter((b) => b.kind === "coins").length * COIN_HITS;
+const secretGems = LEVELS.reduce((sum, lv) => sum + stashOf(lv), 0);
+const totalGems = LEVELS.reduce((sum, lv) => sum + lv.gems.length, 0) + secretGems;
+const maxSpeed = Math.max(...LEVELS.map((lv) => lv.maxSpeed));
+// Жизни, спрятанные в невидимых ящиках, - их тоже можно донести до финиша.
+const hiddenLives = LEVELS.reduce(
+  (sum, lv) => sum + lv.blocks.filter((b) => b.hidden && b.drop === "life").length,
   0,
 );
-const totalGems = LEVELS.reduce((sum, lv) => sum + lv.gems.length, 0) + roomGems;
-const maxSpeed = Math.max(...LEVELS.map((lv) => lv.maxSpeed));
 
 // Самый короткий уровень задаёт минимум кадров на один зачёт: пройти
 // карту быстрее, чем её длина делить на максимальную скорость, нельзя.
@@ -34,6 +41,12 @@ const WANT: Record<string, number> = {
   TOTAL_GEMS: totalGems,
   TOTAL_LEVELS: LEVELS.length,
   MIN_LEVEL_FRAMES: minLevelFrames,
+  MAX_CARRY_LIVES,
+  HIDDEN_LIVES: hiddenLives,
+  // По мини-боссу в каждом замке.
+  BOSS_SCORE: LEVELS.filter((lv) => lv.boss).length * TUNING.scoreBoss,
+  // Норма у каждого уровня своя; для забега целиком берём самую щедрую.
+  MAX_PAR: Math.max(...LEVELS.map((lv) => lv.par)),
 };
 
 /**
@@ -71,16 +84,15 @@ const levelMinFrames = LEVELS.map((lv) => {
  * посчитанный из карты, в разы строже общего «сколько-то за забег».
  */
 const levelMaxScore = LEVELS.map((lv) => {
-  const stashGems = lv.pipes.filter((pipe) => pipe.bonus).length * ROOM_GEMS;
   return (
-    (lv.gems.length + stashGems) * 100 +
+    (lv.gems.length + stashOf(lv)) * 100 +
     lv.foes.length * COMBO_SCORE[COMBO_SCORE.length - 1]! +
     lv.blocks.length * (50 + 400) +
     lv.coffee.length * 50 +
     POLE_BONUS_MAX +
     TUNING.scoreLevelClear +
-    TUNING.levelParSeconds * TUNING.scorePerSecondLeft +
-    (lv.boss ? TUNING.scoreBoss : 0)
+    lv.par * TUNING.scorePerSecondLeft +
+    (lv.boss ? TUNING.scoreBoss + lv.boss.maxHp * TUNING.scoreStomp : 0)
   );
 });
 
@@ -140,7 +152,7 @@ if (process.argv.includes("--check")) {
   }
   console.log(
     `античит совпадает с игрой: ${LEVELS.length} уровней, ${totalGems} скиллов` +
-      ` (из них ${roomGems} в заначках), ширина ${totalWidth}`,
+      ` (из них ${secretGems} в секретах), ширина ${totalWidth}`,
   );
 } else {
   console.log("// Сгенерировано: npm run anticheat. Не править руками.");

@@ -1,7 +1,8 @@
 import { bonusRoom, levelAt, LEVELS } from "./levels";
 import {
-  COMBO_SCORE, FLYING_FOES as FLYING, FOE_SIZE, INTRO_FRAMES, PLAYER_H_BIG, PLAYER_H_SMALL,
-  PLAYER_W, POLE_BONUS_MAX, POLE_H, ROTOR_STEP, SKILLS_PER_LIFE, TICKS_PER_SECOND, TUNING as T, VIEW,
+  COIN_HITS, COMBO_SCORE, FLYING_FOES as FLYING, FOE_SIZE, INTRO_FRAMES, MAX_CARRY_LIVES,
+  PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, POLE_BONUS_MAX, POLE_H, ROTOR_STEP, SKILLS_PER_LIFE,
+  TICKS_PER_SECOND, TUNING as T, VIEW,
 } from "./tuning";
 
 // Размеры врагов живут в tuning: они нужны и сборке уровней, а та
@@ -25,6 +26,18 @@ export const heightFor = (grade: Grade): number =>
 function overlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
+
+/** Твёрдый ли ящик: разбитый и ещё не найденный невидимый - нет. */
+const solidBlock = (b: Block): boolean => !b.broken && !(b.hidden && !b.used);
+
+/**
+ * Звёзды уровня, битами. Битами, а не числом: в памяти игры звёзды копятся
+ * по одной за разные попытки, и важно, какая именно уже взята.
+ */
+export const STARS = { clear: 1, gems: 2, time: 4 } as const;
+
+export const countStars = (mask: number): number =>
+  (mask & STARS.clear ? 1 : 0) + (mask & STARS.gems ? 1 : 0) + (mask & STARS.time ? 1 : 0);
 
 export interface InputState {
   left: boolean;
@@ -53,13 +66,15 @@ export interface LevelResult {
   frames: number;
   deaths: number;
   skills: number;
+  /** Звёзды этой попытки, битами STARS. */
+  stars: number;
 }
 
 export type WorldEvent =
   | "stomp" | "hurt" | "pickup" | "coffee"
   | "checkpoint" | "clear" | "death" | "final" | "jump" | "pipe" | "bossHit" | "bossDown"
   | "bump" | "break" | "gradeUp" | "gradeDown" | "throw" | "vacation" | "life" | "pole"
-  | "levelDone";
+  | "levelDone" | "mapBack";
 
 /** Кадры на спуск в трубу и на подъём из парной. */
 const WARP_DIVE = 22;
@@ -97,9 +112,6 @@ const SLIDE_FRAMES = 34;
 const WALK_FRAMES = 44;
 const ENTER_FRAMES = 30;
 
-/** Сколько попаданий держит босс - нужно для разгона по мере урона. */
-const BOSS_HP_MAX = 3;
-
 export class World {
   /**
    * Проезд по трубе. Пока он идёт, физика и враги отключены:
@@ -132,6 +144,10 @@ export class World {
   lastLevel: LevelResult | null = null;
   /** Место в таблице уровня - приходит с сервера и показывается на карточке. */
   levelPlace: string | null = null;
+  /** Один уровень с карты мира: пройден - обратно на карту, а не дальше. */
+  single = false;
+  /** Норма времени текущего уровня, секунды. Заначка её не меняет. */
+  par = 0;
   levelIndex = 0;
   level: LevelSpec = levelAt(0);
   phase: Phase = "play";
@@ -172,7 +188,7 @@ export class World {
   /** X последнего пройденного коммита - сюда возрождаемся. */
   checkpointX = 10;
 
-  lives = T.startLives;
+  lives: number = T.startLives;
   score = 0;
   skills = 0;
   shake = 0;
@@ -201,13 +217,16 @@ export class World {
   }
 
   /**
-   * Новый забег. С уровня можно начать не с первого: после «Выгорания»
-   * игра предлагает продолжить с достигнутого, иначе двенадцать уровней
-   * подряд без права на ошибку - слишком для игры, которую открывают
-   * из чата на пять минут. Такой забег помечен startLevel и в общий зачёт
-   * идти не должен.
+   * Новый забег. Продолжения с места выгорания больше нет: потерял все
+   * жизни - начинай с первого уровня. Взамен каждый пройденный уровень
+   * восполняет жизни, так что забег обрывает не усталость, накопленная за
+   * десять уровней, а один уровень, который не дался. Жёстче и честнее.
+   *
+   * single - один уровень с карты мира, для звёзд и таблицы уровня.
+   * Такой забег в общий зачёт не идёт; startLevel показывает, какой уровень.
    */
-  newRun(from = 0): void {
+  newRun(from = 0, single = false): void {
+    this.single = single;
     // Грейд обнуляем явно. loadLevel переносит его из текущего игрока, а
     // respawn при последней жизни выходит по return ДО пересборки игрока -
     // поэтому после «Выгорания» новый забег начинался сеньором, ростом 22
@@ -266,7 +285,10 @@ export class World {
         speed: size.speed, w: size.w, h: size.h,
       };
     });
-    this.blocks = lv.blocks.map((b) => ({ ...b, bump: 0, used: false, broken: false }));
+    this.blocks = lv.blocks.map((b) => ({
+      ...b, bump: 0, used: false, broken: false, coins: b.kind === "coins" ? COIN_HITS : 0,
+    }));
+    this.par = lv.par;
     this.items = [];
     this.shots = [];
     this.boss = lv.boss ? { ...lv.boss } : null;
@@ -316,7 +338,15 @@ export class World {
       return;
     }
     if (this.phase === "clear") {
+      // С карты играют один уровень: пройден - обратно на карту.
+      if (this.single) {
+        this.emit("mapBack");
+        return;
+      }
       if (this.levelIndex + 1 < LEVELS.length) {
+        // Пройденный уровень восполняет жизни. Лишние, заработанные сверху,
+        // переносятся, но не больше MAX_CARRY_LIVES.
+        this.lives = Math.max(T.startLives, Math.min(this.lives, MAX_CARRY_LIVES));
         this.loadLevel(this.levelIndex + 1);
       } else {
         this.phase = "final";
@@ -335,6 +365,18 @@ export class World {
     if (b.bump > 0) return;
     b.bump = 8;
 
+    // Кирпич-заначка: по скиллу за удар, пока не опустеет. Проверяется
+    // раньше обычного кирпича - иначе сеньор разбивал бы её с первого удара.
+    if (b.kind === "coins" && !b.used) {
+      b.coins -= 1;
+      if (b.coins <= 0) b.used = true;
+      this.gainSkill(b.x + 2, b.y - 8);
+      this.popup(b.x + 6, b.y - 4, `+${T.scoreGem}`, PAL.gemLite);
+      return;
+    }
+
+    // Невидимый ящик устроен как обычный с вопросом: удар снизу делает
+    // его used, и с этого кадра он виден и твёрд.
     if (b.kind === "question" && !b.used) {
       b.used = true;
       // Стартуем внутри блока: за 12 кадров предмет выезжает ровно на его крышу.
@@ -343,7 +385,7 @@ export class World {
       // игроку. Так предмет виден сразу и сам идёт в руки; уходя вправо, он
       // убегал бы в ту же сторону, куда бежит игрок, и догнать его можно было
       // только ускорившись, чего на бегу к следующей яме никто не делает.
-      const walks = drop === "offer" || drop === "vacation";
+      const walks = drop === "offer" || drop === "vacation" || drop === "life";
       this.items.push({
         kind: drop, x: b.x + 2, y: b.y,
         vx: walks ? -0.6 : 0, vy: 0,
@@ -392,7 +434,7 @@ export class World {
       ...lv.platforms,
       ...lv.pipes,
       ...this.moving,
-      ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
+      ...this.blocks.filter(solidBlock).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
     ];
     for (let pass = 0; pass < 3; pass++) {
       const hit = solids.find((o) => overlap(p, o));
@@ -412,6 +454,23 @@ export class World {
     this.lives += 1;
     this.popup(x, y, "1UP", PAL.offer);
     this.emit("life");
+  }
+
+  /**
+   * Скилл в копилку: очки, искры, а каждая сотня - жизнь. Отсюда берут и
+   * скиллы с карты, и выбитые из кирпича-заначки.
+   */
+  private gainSkill(x: number, y: number): void {
+    this.skills += 1;
+    this.score += T.scoreGem;
+    this.burst(x + 4, y + 4, PAL.gem, 7);
+    this.emit("pickup");
+    // Каждая сотня скиллов - жизнь: собирать становится выгодно,
+    // а не просто красиво.
+    if (this.skills >= this.nextLife) {
+      this.nextLife += SKILLS_PER_LIFE;
+      this.gainLife(x, y - 6);
+    }
   }
 
   /**
@@ -444,9 +503,9 @@ export class World {
   }
 
   /**
-   * Финальный собес. Он не патрулирует отрезок, как рядовые враги, а идёт
+   * Мини-босс замка. Он не патрулирует отрезок, как рядовые враги, а идёт
    * на игрока: иначе бой решался бы стоянием в углу арены. Скорость растёт
-   * с каждым попаданием - последняя треть боя самая злая.
+   * с каждым попаданием - конец боя самый злой.
    */
   private updateBoss(): void {
     const b = this.boss;
@@ -472,7 +531,8 @@ export class World {
     if (b.hit > 0) b.hit -= 1;
 
     // Шаг в сторону игрока, но не за пределы арены.
-    const speed = 0.5 + (BOSS_HP_MAX - b.hp) * 0.2;
+    const lost = b.maxHp - b.hp;
+    const speed = b.pace + lost * 0.2;
     b.dir = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
     // После своего удара босс отходит. Иначе он вплотную упирается в игрока,
     // и урон идёт по кругу: отбрасывания не хватает, чтобы разорвать контакт.
@@ -485,7 +545,7 @@ export class World {
     const onFloor = b.y + b.h >= b.baseY - 0.01;
     if (b.hop <= 0 && onFloor) {
       b.vy = -3.9;
-      b.hop = 150 - (BOSS_HP_MAX - b.hp) * 30;
+      b.hop = b.hopEvery - lost * 30;
     }
     b.vy = Math.min(b.vy + T.gravity, T.maxFall);
     b.y += b.vy;
@@ -499,10 +559,11 @@ export class World {
     }
 
     // Вопрос летит по дуге в сторону игрока - от него можно увернуться
-    // прыжком или присесть за блоком.
+    // прыжком или присесть за блоком. Тестовое задание не кидается
+    // вовсе: оно просто есть и мешает.
     b.cool -= 1;
-    if (b.cool <= 0) {
-      b.cool = 110 - (BOSS_HP_MAX - b.hp) * 22;
+    if (b.throwEvery > 0 && b.cool <= 0) {
+      b.cool = b.throwEvery - lost * 22;
       const toward = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
       this.questions.push({
         x: b.x + (toward > 0 ? b.w : -5),
@@ -535,7 +596,7 @@ export class World {
     }
   }
 
-  /** Одно попадание по боссу: минус жизнь, мигание, а на третьем - конец. */
+  /** Одно попадание по боссу: минус жизнь, мигание, а на последнем - конец. */
   private hurtBoss(b: Boss): void {
     if (b.hit > 0 || b.dying > 0) return;
     b.hp -= 1;
@@ -643,7 +704,7 @@ export class World {
       b.vy = 0;
       b.hit = 0;
       b.recoil = 0;
-      b.hp = Math.min(BOSS_HP_MAX, b.hp + 1);
+      b.hp = Math.min(b.maxHp, b.hp + 1);
     }
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, x - VIEW.w / 2));
     if (this.deadlineX !== null) this.deadlineX = x - 56;
@@ -802,19 +863,26 @@ export class World {
     this.camera = Math.max(0, Math.min(lv.width - VIEW.w, this.camera));
   }
 
-  /** Уровень засчитан: очки за финиш, за жизни и за оставшееся время. */
+  /** Уровень засчитан: очки за финиш, за жизни, за оставшееся время и звёзды. */
   private clearLevel(): void {
     const livesBonus = this.lives * T.scoreLifeBonus;
     this.score += T.scoreLevelClear + livesBonus;
-    // Бонус за скорость: сколько секунд осталось от нормы на уровень.
+    // Бонус за скорость: сколько секунд осталось от нормы уровня.
     // Не уложился - просто ноль, штрафа за медленную игру нет.
     const frames = this.stats.frames - this.levelStartFrame;
     const spent = frames / TICKS_PER_SECOND;
-    const left = Math.max(0, T.levelParSeconds - spent);
+    const left = Math.max(0, this.par - spent);
     this.score += Math.round(left * T.scorePerSecondLeft);
     this.stats.levelsCleared += 1;
     this.stats.score = this.score;
     this.stats.skills = this.skills;
+
+    // Звёзды: пройти, собрать все скиллы карты, уложиться в норму. Скиллы
+    // из заначек и кирпичей не в счёт - звезда за карту, а не за секреты.
+    const stars =
+      STARS.clear |
+      (this.gems.every((g) => g.taken) ? STARS.gems : 0) |
+      (spent <= this.par ? STARS.time : 0);
 
     // Результат уровня: всё, что заработано здесь, минус бонус за жизни.
     this.lastLevel = {
@@ -823,6 +891,7 @@ export class World {
       frames,
       deaths: this.levelDeaths,
       skills: this.skills - this.levelSkillsStart,
+      stars,
     };
 
     this.finish = null;
@@ -856,7 +925,7 @@ export class World {
    */
   get secondsLeft(): number {
     const spent = (this.stats.frames - this.levelStartFrame) / TICKS_PER_SECOND;
-    return Math.max(0, Math.ceil(T.levelParSeconds - spent));
+    return Math.max(0, Math.ceil(this.par - spent));
   }
 
   update(input: InputState): void {
@@ -1061,7 +1130,7 @@ export class World {
       ...lv.platforms,
       ...lv.pipes,
       ...this.moving,
-      ...this.blocks.filter((b) => !b.broken).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
+      ...this.blocks.filter(solidBlock).map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 })),
     ];
 
     // Горизонталь
@@ -1105,6 +1174,11 @@ export class World {
       if (b.broken) continue;
       const box = { x: b.x, y: b.y, w: 12, h: 12 };
       if (!overlap(p, box)) continue;
+      // Невидимый ящик ловит только удар снизу, в прыжке. Сверху и сбоку
+      // его нет: иначе игрок спотыкался бы о пустое место посреди дороги,
+      // а секрет находят прыжком, а не лбом на бегу.
+      const found = pass === 0 && p.vy < 0 && prevTop >= box.y + box.h - 1;
+      if (b.hidden && !b.used && !found) continue;
       moved = true;
 
       // Сторону определяем по тому, откуда игрок пришёл, а не по знаку
@@ -1238,6 +1312,9 @@ export class World {
         this.popup(item.x + 5, item.y - 4, "+300", PAL.offerLite);
         this.burst(item.x + 5, item.y + 5, PAL.gem, 12);
         this.emit("gradeUp");
+      } else if (item.kind === "life") {
+        this.gainLife(item.x + 5, item.y - 4);
+        this.burst(item.x + 5, item.y + 5, PAL.shirtLite, 12);
       } else if (item.kind === "coffee") {
         p.boost = T.coffeeFrames;
         this.score += T.scoreCoffee;
@@ -1295,17 +1372,7 @@ export class World {
     for (const g of this.gems) {
       if (g.taken || !overlap(p, { x: g.x, y: g.y, w: 8, h: 9 })) continue;
       g.taken = true;
-      this.skills += 1;
-      this.score += T.scoreGem;
-      this.burst(g.x + 4, g.y + 4, PAL.gem, 7);
-      this.emit("pickup");
-      // Каждая сотня скиллов - жизнь. На всех картах их около шестисот,
-      // то есть за полное прохождение набегает пять попыток: собирать
-      // становится выгодно, а не просто красиво.
-      if (this.skills >= this.nextLife) {
-        this.nextLife += SKILLS_PER_LIFE;
-        this.gainLife(g.x, g.y - 6);
-      }
+      this.gainSkill(g.x, g.y);
     }
 
     for (const c of this.coffee) {

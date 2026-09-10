@@ -14,7 +14,7 @@ import { verifyInitData } from "./telegram.js";
 import { verifyWorkaem } from "./auth.js";
 import { checkLevel, checkRun, gradeFor, LEVEL_NAMES } from "./anticheat.js";
 import {
-  ALL_TIME, anonName, boardOf, cleanName, hashId, levelMode, levelStats, PAGE_SIZE, placeOf,
+  ALL_TIME, anonName, boardOf, CAREER, cleanName, hashId, levelMode, levelStats, PAGE_SIZE, placeOf,
   playersPage, saveRun, statsOf, topOf,
 } from "./board.js";
 
@@ -128,7 +128,7 @@ async function topMessage(env) {
   if (!env.DB) return "Таблица рекордов ещё не подключена.";
   try {
     const [career, levels] = await Promise.all([
-      topOf(env.DB, "career", ALL_TIME, 5),
+      topOf(env.DB, CAREER, ALL_TIME, 5),
       levelStats(env.DB),
     ]);
 
@@ -456,10 +456,9 @@ async function handleResult(request, env) {
   const id = await hashId(who.source, who.id, env.BOARD_SALT);
   const name = payload.anon ? anonName(id) : cleanName(who.name);
 
-  // Забег с продолжения в таблицу не идёт: рекорд должен означать
-  // пройденный путь целиком, а не последний его кусок. Проверяем на
-  // сервере, а не на клиенте: клиент можно и попросить не присылать,
-  // но полагаться на такую просьбу нельзя.
+  // В общий зачёт идёт только путь с первого уровня. Продолжения в игре
+  // больше нет, а уровни с карты мира клиент сюда не шлёт, - но проверяем
+  // на сервере: полагаться на то, чего клиент не пришлёт, нельзя.
   const forBoard = Number(stats.startLevel ?? 0) === 0;
 
   let standing = null;
@@ -469,7 +468,7 @@ async function handleResult(request, env) {
         who: `${who.source}:${id}`,
         name,
         source: who.source,
-        mode: "career",
+        mode: CAREER,
         bucket: ALL_TIME,
         score: stats.score,
         skills: stats.skills,
@@ -519,8 +518,8 @@ async function handleResult(request, env) {
  * Результат одного уровня.
  *
  * Приходит на каждом финише, а не в конце забега: уровень - самостоятельное
- * соревнование, и забег с продолжения честно участвует в таблицах тех
- * уровней, которые действительно прошёл.
+ * соревнование, и уровень, сыгранный отдельно с карты мира, честно
+ * участвует в таблице своего уровня.
  */
 async function handleLevel(request, env) {
   let payload;
@@ -627,7 +626,7 @@ async function handlePlayers(request, env) {
     let mine = null;
     if (auth.ok) {
       const who = `${auth.source}:${await hashId(auth.source, auth.id, env.BOARD_SALT)}`;
-      const standing = await placeOf(env.DB, "career", ALL_TIME, who);
+      const standing = await placeOf(env.DB, CAREER, ALL_TIME, who);
       if (standing.place) mine = standing;
     }
     return json(request, { ok: true, ...page, mine });

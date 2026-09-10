@@ -254,6 +254,45 @@ export const UNDERGROUND: Record<string, string> = {
 } as const;
 
 /**
+ * Замок мира: серый камень вместо кирпича и тёмный свод. Красное зарево
+ * снизу дорисовывает рендер - здесь только цвета. Серый выбран потому,
+ * что больше его нет нигде: увидел серые стены - значит, впереди собес.
+ */
+export const CASTLE: Record<string, string> = {
+  sky: "#16121E",
+  skyHigh: "#1E1828",
+  ground: "#6A6478",
+  groundLite: "#8C86A0",
+  groundDark: "#433E52",
+  groundEdge: "#2A2636",
+  brick: "#6A6478",
+  brickLite: "#8C86A0",
+  brickDark: "#433E52",
+  brickTop: "#8C86A0",
+  brickEdge: "#433E52",
+} as const;
+
+/**
+ * Небо: земля становится облачной, пейзаж внизу пропадает. Опоры светлые,
+ * и тёмные враги на них видны лучше, чем на кирпиче.
+ */
+export const SKY: Record<string, string> = {
+  skyTop: "#5AA0EC",
+  skyHorizon: "#CFE6FD",
+  cloud: "#FFFFFF",
+  cloudShade: "#DCE9F9",
+  ground: "#B9C9E4",
+  groundLite: "#EEF4FC",
+  groundDark: "#93A6C8",
+  groundEdge: "#71829F",
+  brick: "#B9C9E4",
+  brickLite: "#EEF4FC",
+  brickDark: "#93A6C8",
+  brickTop: "#EEF4FC",
+  brickEdge: "#71829F",
+} as const;
+
+/**
  * Подмены по темам в одном месте. Рендер спрашивает цвет через них и не
  * знает, сколько всего тем: добавить новую - значит дописать сюда словарь,
  * а не искать по файлу условия «если подземелье».
@@ -262,4 +301,6 @@ export const THEME_COLORS: Record<string, Record<string, string>> = {
   underground: UNDERGROUND,
   night: NIGHT,
   prod: PROD,
+  castle: CASTLE,
+  sky: SKY,
 };

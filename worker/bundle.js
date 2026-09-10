@@ -92,15 +92,19 @@ async function verifyWorkaem(token, secret) {
 }
 
 // worker/anticheat.js
-var TOTAL_LEVEL_WIDTH = 37764;
+var TOTAL_LEVEL_WIDTH = 34116;
 var MAX_SPEED = 1.8;
-var TOTAL_GEMS = 833;
+var TOTAL_GEMS = 936;
 var TOTAL_LEVELS = 12;
 var MIN_LEVEL_FRAMES = 744;
+var MAX_CARRY_LIVES = 5;
+var HIDDEN_LIVES = 4;
+var BOSS_SCORE = 8e3;
+var MAX_PAR = 80;
 var COMBO_SCORE = [200, 400, 800, 1e3, 2e3, 4e3];
-var LEVEL_MIN_FRAMES = [446, 921, 961, 880, 972, 947, 950, 860, 917, 934, 918, 912];
-var LEVEL_MAX_SCORE = [24400, 47100, 77150, 57600, 89e3, 113550, 106450, 88800, 114150, 98350, 104350, 113550];
-var LEVEL_NAMES = ["\u0421\u0442\u0430\u0436\u0438\u0440\u043E\u0432\u043A\u0430", "\u0413\u0430\u043B\u0435\u0440\u0430", "\u0410\u0443\u0442\u0441\u043E\u0440\u0441", "\u0421\u0435\u0440\u0432\u0435\u0440\u043D\u0430\u044F", "\u0421\u0442\u0443\u0434\u0438\u044F", "\u0421\u0442\u0430\u0440\u0442\u0430\u043F", "\u041F\u0440\u043E\u0434\u0443\u043A\u0442", "\u041B\u0435\u0433\u0430\u0441\u0438", "\u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430", "\u041A\u043E\u0440\u043F\u043E\u0440\u0430\u0446\u0438\u044F", "\u0421\u0432\u043E\u044F \u0444\u0438\u0440\u043C\u0430", "\u041E\u0444\u0444\u0435\u0440"];
+var LEVEL_MIN_FRAMES = [446, 845, 907, 838, 799, 920, 822, 836, 960, 810, 756, 875];
+var LEVEL_MAX_SCORE = [24310, 72960, 75860, 83660, 13800, 120110, 91160, 94710, 76910, 110460, 18250, 97e3];
+var LEVEL_NAMES = ["\u0421\u0442\u0430\u0436\u0438\u0440\u043E\u0432\u043A\u0430", "\u0413\u0430\u043B\u0435\u0440\u0430", "\u0422\u0435\u0441\u0442\u043E\u0432\u043E\u0435", "\u0410\u0443\u0442\u0441\u043E\u0440\u0441", "\u041E\u0431\u043B\u0430\u043A\u043E", "HR-\u0441\u043A\u0440\u0438\u043D\u0438\u043D\u0433", "\u0421\u0442\u0430\u0440\u0442\u0430\u043F", "\u041B\u0435\u0433\u0430\u0441\u0438", "\u0422\u0435\u0445\u0441\u043E\u0431\u0435\u0441", "\u041A\u043E\u0440\u043F\u043E\u0440\u0430\u0446\u0438\u044F", "\u0425\u0430\u0439\u043B\u043E\u0430\u0434", "\u041E\u0444\u0444\u0435\u0440"];
 var MIN_FRAMES = Math.floor(TOTAL_LEVEL_WIDTH / MAX_SPEED);
 function checkRun(stats) {
   if (!stats || typeof stats !== "object") return { ok: false, reason: "\u043D\u0435\u0442 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438" };
@@ -128,19 +132,19 @@ function checkRun(stats) {
   if (!Number.isInteger(combo) || combo < 0 || combo > stats.stomps) {
     return { ok: false, reason: `\u0446\u0435\u043F\u043E\u0447\u043A\u0430 ${combo} \u043F\u0440\u0438 ${stats.stomps} \u0440\u0430\u0441\u0442\u043E\u043F\u0442\u0430\u043D\u043D\u044B\u0445` };
   }
-  const maxLives = 3 + Math.floor(stats.skills / 100) + Math.floor(stats.stomps / 7);
+  const maxLives = MAX_CARRY_LIVES + Math.floor(stats.skills / 100) + Math.floor(stats.stomps / 7) + HIDDEN_LIVES;
   const perStomp = COMBO_SCORE[Math.min(Math.max(combo, 1), COMBO_SCORE.length) - 1];
   const maxScore = stats.skills * 100 + stats.stomps * perStomp + stats.blocks * 50 + (stats.tested ?? 0) * 150 + // Оффер из блока даёт 300, кофе 50; блоков на картах заметно меньше сотни.
-  100 * 300 + // Собес в финале.
-  2e3 + // За уровень: финиш, жизни, верхушка флагштока и бонус за скорость.
-  stats.levelsCleared * (500 + maxLives * 250 + 3e3 + 75 * 12);
+  100 * 300 + // Мини-боссы в замках.
+  BOSS_SCORE + // За уровень: финиш, жизни, верхушка флагштока и бонус за скорость.
+  stats.levelsCleared * (500 + maxLives * 250 + 3e3 + MAX_PAR * 12);
   if (stats.score > maxScore) {
     return { ok: false, reason: `${stats.score} \u043E\u0447\u043A\u043E\u0432 \u043F\u0440\u0438 \u043C\u0430\u043A\u0441\u0438\u043C\u0443\u043C\u0435 ${maxScore}` };
   }
   return { ok: true };
 }
 function gradeFor(levelsCleared) {
-  return ["\u0414\u0436\u0443\u043D", "\u041C\u0438\u0434\u043B", "\u0421\u0435\u043D\u044C\u043E\u0440", "\u041B\u0438\u0434", "\u041B\u0438\u0434"][Math.min(levelsCleared, 4)] ?? "\u0414\u0436\u0443\u043D";
+  return ["\u0421\u0442\u0430\u0436\u0451\u0440", "\u0414\u0436\u0443\u043D", "\u041C\u0438\u0434\u043B", "\u0421\u0435\u043D\u044C\u043E\u0440", "\u041B\u0438\u0434"][Math.min(Math.floor(levelsCleared / 3), 4)] ?? "\u0421\u0442\u0430\u0436\u0451\u0440";
 }
 function checkLevel(result) {
   if (!result || typeof result !== "object") return { ok: false, reason: "\u043D\u0435\u0442 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430" };
@@ -253,20 +257,23 @@ async function totalsOf(db) {
   return out;
 }
 var ALL_TIME = "all";
+var SEASON = "s2";
+var CAREER = `career:${SEASON}`;
+var LEVEL_PREFIX = `level:${SEASON}:`;
 async function boardOf(db) {
   const [career, totals] = await Promise.all([
-    topOf(db, "career", ALL_TIME),
+    topOf(db, CAREER, ALL_TIME),
     totalsOf(db)
   ]);
   return { career, totals };
 }
-var levelMode = (level) => `level:${level}`;
-var levelOf = (mode) => Number(String(mode).slice("level:".length));
+var levelMode = (level) => `${LEVEL_PREFIX}${level}`;
+var levelOf = (mode) => Number(String(mode).slice(LEVEL_PREFIX.length));
 async function levelStats(db) {
   const { results } = await db.prepare(
     `WITH bests AS (
          SELECT mode, who, name, MAX(score) AS score, frames FROM runs
-         WHERE mode LIKE 'level:%' GROUP BY mode, who
+         WHERE mode LIKE ?1 GROUP BY mode, who
        ), ranked AS (
          SELECT mode, name, score, frames,
                 ROW_NUMBER() OVER (PARTITION BY mode ORDER BY score DESC) AS rn,
@@ -275,7 +282,7 @@ async function levelStats(db) {
        )
        SELECT mode, name, score, frames, rn, players FROM ranked
        WHERE rn <= 3 ORDER BY mode, rn`
-  ).all();
+  ).bind(`${LEVEL_PREFIX}%`).all();
   const byLevel = {};
   for (const row of results ?? []) {
     const level = levelOf(row.mode);
@@ -289,13 +296,13 @@ async function myLevels(db, who) {
   const { results } = await db.prepare(
     `WITH bests AS (
          SELECT mode, who, MAX(score) AS score, frames FROM runs
-         WHERE mode LIKE 'level:%' GROUP BY mode, who
+         WHERE mode LIKE ?1 GROUP BY mode, who
        )
        SELECT m.mode, m.score, m.frames,
               (SELECT COUNT(*) FROM bests b WHERE b.mode = m.mode AND b.score > m.score) + 1 AS place,
               (SELECT COUNT(*) FROM bests b WHERE b.mode = m.mode) AS players
-       FROM bests m WHERE m.who = ?1`
-  ).bind(who).all();
+       FROM bests m WHERE m.who = ?2`
+  ).bind(`${LEVEL_PREFIX}%`, who).all();
   const mine = {};
   for (const row of results ?? []) {
     const level = levelOf(row.mode);
@@ -306,31 +313,31 @@ async function myLevels(db, who) {
 }
 async function statsOf(db, who) {
   const [career, levels, totals, mine] = await Promise.all([
-    topOf(db, "career", ALL_TIME),
+    topOf(db, CAREER, ALL_TIME),
     levelStats(db),
     totalsOf(db),
     who ? myLevels(db, who) : Promise.resolve({})
   ]);
   return { career, levels, totals, mine };
 }
-var PAGE_SIZE = 20;
+var PAGE_SIZE = 10;
 async function playersPage(db, offset = 0, limit = PAGE_SIZE) {
   const take = Math.max(1, Math.min(50, Math.floor(limit) || PAGE_SIZE));
   const skip = Math.max(0, Math.floor(offset) || 0);
   const { results } = await db.prepare(
     `WITH bests AS (
          SELECT who, name, source, MAX(score) AS score, levels, deaths
-         FROM runs WHERE mode = 'career' AND bucket = ?1 GROUP BY who
+         FROM runs WHERE mode = ?4 AND bucket = ?1 GROUP BY who
        )
        SELECT name, source, score, levels, deaths,
               ROW_NUMBER() OVER (ORDER BY score DESC) AS place
        FROM bests ORDER BY score DESC LIMIT ?2 OFFSET ?3`
-  ).bind(ALL_TIME, take, skip).all();
+  ).bind(ALL_TIME, take, skip, CAREER).all();
   const counted = await db.prepare(
     `SELECT COUNT(*) AS total FROM (
-         SELECT who FROM runs WHERE mode = 'career' AND bucket = ?1 GROUP BY who
+         SELECT who FROM runs WHERE mode = ?2 AND bucket = ?1 GROUP BY who
        )`
-  ).bind(ALL_TIME).first();
+  ).bind(ALL_TIME, CAREER).first();
   return { rows: results ?? [], total: counted?.total ?? 0, offset: skip, limit: take };
 }
 
@@ -409,7 +416,7 @@ async function topMessage(env) {
   if (!env.DB) return "\u0422\u0430\u0431\u043B\u0438\u0446\u0430 \u0440\u0435\u043A\u043E\u0440\u0434\u043E\u0432 \u0435\u0449\u0451 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0430.";
   try {
     const [career, levels] = await Promise.all([
-      topOf(env.DB, "career", ALL_TIME, 5),
+      topOf(env.DB, CAREER, ALL_TIME, 5),
       levelStats(env.DB)
     ]);
     const lines = ["*\u0412\u0435\u0441\u044C \u043F\u0443\u0442\u044C* - \u043B\u0443\u0447\u0448\u0438\u0439 \u0437\u0430\u0431\u0435\u0433 \u0446\u0435\u043B\u0438\u043A\u043E\u043C"];
@@ -678,7 +685,7 @@ async function handleResult(request, env) {
         who: `${who.source}:${id}`,
         name,
         source: who.source,
-        mode: "career",
+        mode: CAREER,
         bucket: ALL_TIME,
         score: stats.score,
         skills: stats.skills,
@@ -792,7 +799,7 @@ async function handlePlayers(request, env) {
     let mine = null;
     if (auth.ok) {
       const who = `${auth.source}:${await hashId(auth.source, auth.id, env.BOARD_SALT)}`;
-      const standing = await placeOf(env.DB, "career", ALL_TIME, who);
+      const standing = await placeOf(env.DB, CAREER, ALL_TIME, who);
       if (standing.place) mine = standing;
     }
     return json(request, { ok: true, ...page, mine });

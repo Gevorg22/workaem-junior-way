@@ -13,9 +13,16 @@ import { LEVELS } from "../src/game/levels";
 import { World } from "../src/game/world";
 import type { InputState } from "../src/game/world";
 import { PLAYER_H_BIG, TUNING as T } from "../src/game/tuning";
+import type { Block } from "../src/game/types";
 
 const HOVER_LIMIT = 4;
 const NEAR_ZERO = 0.05;
+
+/**
+ * Твёрд ли ящик. Ненайденный невидимый - нет: сквозь него проходят, пока
+ * не ударят снизу. Для проверки он не опора и не стена, в которой застряли.
+ */
+const solid = (b: Block): boolean => !b.broken && !(b.hidden && !b.used);
 
 interface Report {
   level: string;
@@ -81,7 +88,7 @@ function run(index: number, seed: number): Report {
     const support = [...w.level.platforms, ...w.level.pipes, ...w.moving].some(
       (o) => p.x < o.x + o.w && p.x + p.w > o.x && Math.abs(o.y - feet) <= 1.5,
     ) || w.blocks.some(
-      (b) => !b.broken && p.x < b.x + 12 && p.x + p.w > b.x && Math.abs(b.y - feet) <= 1.5,
+      (b) => solid(b) && p.x < b.x + 12 && p.x + p.w > b.x && Math.abs(b.y - feet) <= 1.5,
     );
 
     if (!support && !p.onGround && Math.abs(p.vy) < NEAR_ZERO) {
@@ -99,7 +106,7 @@ function run(index: number, seed: number): Report {
 
     // Заодно: не остался ли игрок внутри целого ящика.
     for (const b of w.blocks) {
-      if (b.broken) continue;
+      if (!solid(b)) continue;
       if (p.x + p.w > b.x + 1.5 && p.x < b.x + 10.5 && p.y + p.h > b.y + 1.5 && p.y < b.y + 10.5) {
         insideBlock += 1;
         break;
