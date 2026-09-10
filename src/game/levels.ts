@@ -1,7 +1,7 @@
 import {
   ARENA, FINALES, GROUND_Y, HAZARD_Y, INTRO, OUTRO, SEGMENTS, segmentDifficulty, SWAMP_Y, TEACHING,
 } from "./segments";
-import { PLAYER_W } from "./tuning";
+import { FLYING_FOES, FOE_SIZE, PLAYER_H_BIG, PLAYER_W } from "./tuning";
 import type { Segment } from "./segments";
 import type {
   BlockSpec, Boss, FoeSpec, LevelSpec, MovingSpec, Pipe, Rect, RotorSpec, Theme, Vec,
@@ -52,6 +52,79 @@ const PLATFORM_H = 4;
 const BOSS_W = 26;
 const BOSS_H = 30;
 const BOSS_HP = 3;
+
+/** Запас над врагом, чтобы в прыжке успеть набрать скорость вниз и растоптать. */
+const STOMP_ROOM = 4;
+/** Короче этого тропа - не тропа: враг дёргается на месте. */
+const MIN_PATROL = 8;
+
+/**
+ * Тропа наземного врага - только свободный пол.
+ *
+ * Куски карт рисуются по отдельности, и враг с размахом «сорок пикселей
+ * в обе стороны» в собранном уровне то уходил под низкий ряд ящиков, то
+ * проходил сквозь трубу, то шагал над ямой по воздуху. Под ящиками хуже
+ * всего: между их низом и макушкой врага не помещается выросший игрок,
+ * и растоптать его там нельзя физически - только пережидать.
+ *
+ * Поэтому тропа режется уже на собранной карте: из пола под врагом
+ * вычитаются трубы и ящики на высоте его тела и всё, под чем над ним не
+ * встанет большой игрок. Враг остаётся на свободном отрезке, где стоит,
+ * а если стоит в запретном месте - переезжает на ближайший свободный.
+ * Места нет вовсе - врага нет: лучше пустой кусок, чем нечестный.
+ */
+function clampPatrols(
+  foes: FoeSpec[],
+  platforms: Rect[],
+  pipes: Pipe[],
+  blocks: BlockSpec[],
+): FoeSpec[] {
+  const ground = platforms.filter((pl) => pl.h > 6);
+  const beams = platforms.filter((pl) => pl.h <= 6);
+  const boxes: Rect[] = blocks.map((b) => ({ x: b.x, y: b.y, w: 12, h: 12 }));
+  const out: FoeSpec[] = [];
+
+  for (const f of foes) {
+    if (FLYING_FOES[f.kind]) {
+      out.push(f);
+      continue;
+    }
+    const size = FOE_SIZE[f.kind];
+    const top = f.baseY - size.h;
+    const middle = f.x + size.w / 2;
+    const floor = ground.find((g) => middle >= g.x && middle <= g.x + g.w);
+    if (!floor) continue;
+
+    const walls = [...pipes, ...boxes].filter((z) => z.y < f.baseY && z.y + z.h > top);
+    const roofs = [...boxes, ...beams].filter(
+      (z) => z.y + z.h <= top && z.y + z.h > top - PLAYER_H_BIG - STOMP_ROOM,
+    );
+
+    // Отрезки, где может стоять левый край врага, не задевая запретного.
+    let free: Array<[number, number]> = [[floor.x, floor.x + floor.w - size.w]];
+    for (const z of [...walls, ...roofs]) {
+      const banFrom = z.x - size.w;
+      const banTo = z.x + z.w;
+      free = free.flatMap(([lo, hi]): Array<[number, number]> => {
+        if (banTo <= lo || banFrom >= hi) return [[lo, hi]];
+        const parts: Array<[number, number]> = [];
+        if (banFrom > lo) parts.push([lo, banFrom]);
+        if (banTo < hi) parts.push([banTo, hi]);
+        return parts;
+      });
+    }
+    free = free.filter(([lo, hi]) => hi - lo >= MIN_PATROL);
+    if (!free.length) continue;
+
+    const away = ([lo, hi]: [number, number]): number =>
+      f.x < lo ? lo - f.x : f.x > hi ? f.x - hi : 0;
+    const [lo, hi] = free.reduce((best, cur) => (away(cur) < away(best) ? cur : best));
+    const x = Math.max(lo, Math.min(hi, f.x));
+    const span = (f.max - f.min) / 2;
+    out.push({ ...f, x, min: Math.max(lo, x - span), max: Math.min(hi, x + span) });
+  }
+  return out;
+}
 
 function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
   const pick = rng(bp.seed);
@@ -244,7 +317,7 @@ function composeLevel(bp: Blueprint, levelIndex: number): LevelSpec {
     maxSpeed: bp.maxSpeed,
     tint: bp.tint,
     platforms,
-    foes,
+    foes: clampPatrols(foes, platforms, pipes, keptBlocks),
     gems,
     coffee,
     hazards,

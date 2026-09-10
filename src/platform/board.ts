@@ -13,8 +13,18 @@ import { account } from "./workaem";
 /** Адрес воркера. Один на всё: и результаты, и таблицы. */
 export const WORKER = "https://workaem-game-bot.gevorg-kara.workers.dev";
 
-/** Дольше этого ждать нельзя: за две секунды человек уже жмёт «Играть». */
-const TIMEOUT_MS = 2000;
+/**
+ * Сколько ждать ответа. Два значения, потому что ожидания разные: короткий
+ * топ на стартовом экране - украшение, и ждать его незачем, а экран
+ * статистики человек открыл сам и смотрит именно на него.
+ *
+ * Воркер с базой отвечает за секунду-полторы, но на телефоне через мобильную
+ * сеть или VPN легко выходит за две: при старом общем таймауте в две секунды
+ * экран статистики регулярно обрывал запрос и писал «не загрузилась», хотя
+ * данные на сервере были.
+ */
+const QUICK_MS = 4000;
+const PATIENT_MS = 10000;
 
 export interface BoardRow {
   name: string;
@@ -89,9 +99,9 @@ export function identityBody(): Record<string, string> | null {
   return null;
 }
 
-async function ask<T>(path: string, init?: RequestInit): Promise<T | null> {
+async function ask<T>(path: string, init?: RequestInit, timeout = QUICK_MS): Promise<T | null> {
   const stop = new AbortController();
-  const timer = window.setTimeout(() => stop.abort(), TIMEOUT_MS);
+  const timer = window.setTimeout(() => stop.abort(), timeout);
   try {
     const res = await fetch(`${WORKER}${path}`, { ...init, signal: stop.signal });
     if (!res.ok) return null;
@@ -119,7 +129,7 @@ export async function fetchStats(): Promise<Stats | null> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(who ?? {}),
-  });
+  }, PATIENT_MS);
   return data?.ok ? data : null;
 }
 
@@ -141,7 +151,7 @@ export async function fetchPlayers(offset = 0): Promise<PlayersPage | null> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ...(who ?? {}), offset, limit: PAGE_SIZE }),
-  });
+  }, PATIENT_MS);
   return data?.ok ? data : null;
 }
 

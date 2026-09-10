@@ -1,38 +1,21 @@
 import { bonusRoom, levelAt, LEVELS } from "./levels";
 import {
-  COMBO_SCORE, INTRO_FRAMES, PLAYER_H_BIG, PLAYER_H_SMALL, PLAYER_W, POLE_BONUS_MAX, POLE_H,
-  ROTOR_STEP, SKILLS_PER_LIFE, TICKS_PER_SECOND, TUNING as T, VIEW,
+  COMBO_SCORE, FLYING_FOES as FLYING, FOE_SIZE, INTRO_FRAMES, PLAYER_H_BIG, PLAYER_H_SMALL,
+  PLAYER_W, POLE_BONUS_MAX, POLE_H, ROTOR_STEP, SKILLS_PER_LIFE, TICKS_PER_SECOND, TUNING as T, VIEW,
 } from "./tuning";
+
+// Размеры врагов живут в tuning: они нужны и сборке уровней, а та
+// импортируется миром - обратный импорт замкнул бы круг.
+export { FOE_SIZE };
 import { PAL } from "./palette";
 import type {
   Block, Boss, Foe, Grade, Item, LevelSpec, MovingPlatform, Particle, Phase, Pickup, Pipe, Player,
   Popup, Projectile, Rect, Rotor, RunStats,
 } from "./types";
 
-/**
- * Размеры обязаны совпадать с тем, что рисуют спрайты: иначе враг тонет в
- * земле или парит над ней. Сторожит check:sprites, он же покажет, если
- * кто-то поправит рисунок и забудет про хитбокс.
- */
-export const FOE_SIZE: Record<Foe["kind"], { w: number; h: number; speed: number }> = {
-  legacy: { w: 12, h: 10, speed: 0.3 },
-  bug: { w: 9, h: 8, speed: 0.72 },
-  call: { w: 13, h: 10, speed: 0.42 },
-  // Техдолг тяжёлый и медленный: его видно издалека, и обойти проще,
-  // чем сносить. Ростом с маленького игрока, но вдвое шире.
-  debt: { w: 16, h: 12, speed: 0.22 },
-  // Рекрутёр парит, поэтому высота считается от baseY как у созвона.
-  hr: { w: 11, h: 9, speed: 0.5 },
-};
-
 /** Сколько раз надо прыгнуть сверху. Техдолг с одного наскока не убирается. */
 const FOE_HP: Record<Foe["kind"], number> = {
   legacy: 1, bug: 1, call: 1, debt: 2, hr: 1,
-};
-
-/** Кто парит в воздухе, а не ходит по земле. */
-const FLYING: Record<Foe["kind"], boolean> = {
-  legacy: false, bug: false, call: true, debt: false, hr: true,
 };
 
 /** Джун маленький, с первого оффера становится большим. */

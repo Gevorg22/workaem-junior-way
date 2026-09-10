@@ -128,8 +128,14 @@ let paused = true;
 
 /** Загруженная таблица рекордов. null - воркер не ответил или не подключён. */
 let board: Board | null = null;
-/** Загруженная статистика по уровням. */
+/**
+ * Загруженная статистика по уровням. Устаревшая не выбрасывается: после
+ * нового результата её надо перезапросить, но если запрос не удастся,
+ * лучше показать вчерашние места, чем пустой экран.
+ */
 let stats: Stats | null = null;
+let statsFresh = false;
+let statsLoading = false;
 /** Открытый раздел статистики. */
 let statsTab: "levels" | "players" = "levels";
 /** Загруженная страница списка игроков и её смещение. */
@@ -548,7 +554,7 @@ async function submitLevel(): Promise<void> {
   const sentTo = await reportLevel(done, anon);
   if (sentTo.standing?.place) {
     world.levelPlace = `место на уровне ${sentTo.standing.place} из ${sentTo.standing.total}`;
-    stats = null;
+    statsFresh = false;
   } else if (better && progressSaved()) {
     world.levelPlace = "личный рекорд уровня";
   }
@@ -598,11 +604,17 @@ async function showStats(): Promise<void> {
   // Открываем всегда с уровней: это главная таблица, а список игроков -
   // второй вопрос, который возникает уже после «а как у меня по уровням».
   statsTab = "levels";
-  paintStats();
-  if (!stats) {
-    stats = await fetchStats();
+  if (!statsFresh) {
+    statsLoading = true;
     paintStats();
+    const fresh = await fetchStats();
+    statsLoading = false;
+    if (fresh) {
+      stats = fresh;
+      statsFresh = true;
+    }
   }
+  paintStats();
 }
 
 function paintStats(): void {
@@ -654,6 +666,12 @@ function paintStats(): void {
       (totals ? `<br>${totals}` : "");
     return;
   }
+  // Пока запрос в пути, говорим «загружаю», а не «не загрузилась»: раньше
+  // экран сначала объявлял провал и только потом получал ответ.
+  if (statsLoading && !server) {
+    statsNote.textContent = "Загружаю статистику...";
+    return;
+  }
   statsNote.innerHTML = server
     ? "Слева - твой результат и место, справа - сколько игроков сдали уровень. " +
       "Нажми на строку, чтобы увидеть первую тройку. Карта уровня у всех одна " +
@@ -670,7 +688,10 @@ function paintStats(): void {
  */
 async function loadPlayers(offset: number): Promise<void> {
   playersOffset = Math.max(0, offset);
-  players = await fetchPlayers(playersOffset);
+  if (!players) playersRows.innerHTML = '<li class="empty">Загружаю...</li>';
+  const page = await fetchPlayers(playersOffset);
+  // Не ответил сервер - оставляем прежнюю страницу, а не стираем список.
+  if (page) players = page;
   paintPlayers();
 }
 
