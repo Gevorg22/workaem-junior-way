@@ -46,10 +46,14 @@ function measure(draw: (paint: Painter) => void): Bounds {
 }
 
 const POSES = [
-  { name: "стоит",   walking: false, airborne: false, stride: false },
-  { name: "шагает",  walking: true,  airborne: false, stride: true },
-  { name: "шагает2", walking: true,  airborne: false, stride: false },
-  { name: "в прыжке", walking: false, airborne: true, stride: false },
+  { name: "стоит",   walking: false, airborne: false, stride: false, coffee: 0 },
+  { name: "шагает",  walking: true,  airborne: false, stride: true,  coffee: 0 },
+  { name: "шагает2", walking: true,  airborne: false, stride: false, coffee: 0 },
+  { name: "в прыжке", walking: false, airborne: true, stride: false, coffee: 0 },
+  // С кофе в руке появляется кружка, а над головой пар. Кружка торчит вбок и
+  // обязана уложиться в допуск по ширине; пар уходит вверх, а вниз за подошву
+  // не лезет - иначе игрок снова начнёт парить над землёй.
+  { name: "с кофе",  walking: true,  airborne: false, stride: true,  coffee: 300 },
 ];
 
 let bad = 0;
@@ -60,7 +64,7 @@ for (const grade of [0, 1, 2] as const) {
   for (const face of [1, -1] as const) {
     for (const pose of POSES) {
       const b = measure((paint) =>
-        drawDev(paint, 0, 0, { face, walking: pose.walking, airborne: pose.airborne, stride: pose.stride, grade }),
+        drawDev(paint, 0, 0, { face, walking: pose.walking, airborne: pose.airborne, stride: pose.stride, grade, coffee: pose.coffee }),
       );
       // Подошва обязана лежать ровно на нижней грани хитбокса. Верх может
       // торчать выше - наушники сеньора рисуются над головой намеренно.

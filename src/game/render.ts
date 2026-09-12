@@ -728,21 +728,21 @@ export class Renderer {
     let y = Math.round(pl.y);
     if (!airborne && walking) y += Math.floor(w.ticks / 6) % 2;
 
-    if (pl.boost > 0 && (pl.boost > 90 || Math.floor(w.ticks / 4) % 2 === 0)) {
-      this.paint.oval(x - (pl.face > 0 ? 2 : -11), y + 12, 2.6, 1.1, PAL.coffee);
-    }
-
     // Отпуск виден по мерцающему ореолу - иначе неуязвимость незаметна.
     if (pl.vacation > 0 && (pl.vacation > 120 || Math.floor(w.ticks / 4) % 2 === 0)) {
       const glow = Math.floor(w.ticks / 3) % 2 ? PAL.vacationLite : PAL.gemLite;
       this.paint.glow(x + pl.w / 2, y + pl.h / 2, pl.h * 0.9, glow);
     }
+    // Кофе рисует сам спрайт: кружку в свободную руку и пар над головой.
+    // Раньше это было бурое пятнышко у ног, прибитое к y + 12 - у выросшего
+    // игрока, вдвое более высокого, оно висело на уровне пояса.
     drawDev(this.paint, x, y, {
       face: pl.face,
       walking,
       airborne,
       stride: Math.floor(w.ticks / 5) % 2 === 0,
       grade: pl.grade,
+      coffee: pl.boost,
     });
   }
 

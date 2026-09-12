@@ -105,6 +105,10 @@ export const PAL = {
   coffee: "#8A5A2E",
   coffeeLite: "#B88450",
   coffeeDark: "#5A3418",
+  // Кружка светлая почти до белого: на тёмных уровнях она обязана читаться
+  // с одного взгляда, а кофейный цвет на ней - только полоска сверху.
+  cupBody: "#F6EBD6",
+  cupShade: "#D8C4A2",
 
   offer: "#2ECC71",
   offerLite: "#7FE8A8",

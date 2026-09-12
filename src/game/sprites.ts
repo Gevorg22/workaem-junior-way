@@ -139,6 +139,70 @@ export interface DevPose {
   stride: boolean;
   /** Грейд меняет только вид, хитбокс остаётся 9x15 - иначе не пролезть под платформы. */
   grade: Grade;
+  /**
+   * Кофе: сколько кадров ускорения осталось, 0 - кофе нет. По этому же числу
+   * живёт и анимация: оно убывает каждый кадр, так что отдельный счётчик
+   * времени спрайтам не нужен.
+   */
+  coffee?: number;
+}
+
+/**
+ * Кружка кофе в свободной руке. Свободна всегда одна и та же: вторая занята
+ * ноутбуком, поэтому кружка оказывается с той стороны, куда игрок не смотрит.
+ *
+ * Размер задаётся множителем: у джуна спрайт вдвое ниже, и кружка обязана
+ * ужаться вместе с ним - в полный размер она закрыла бы ему половину туловища.
+ */
+function drawCup(p: Painter, cx: number, cy: number, s: number, out: number): void {
+  const w = 2.1 * s;
+  const h = 2.3 * s;
+  const top = cy - h / 2;
+  const bot = cy + h / 2;
+  // Ручка с внешней стороны. На этом размере именно она отличает кружку от
+  // ноутбука в другой руке: без неё в руках два одинаковых светлых прямоугольника.
+  const hw = 0.85 * s;
+  p.round(out > 0 ? cx + w / 2 - 0.1 * s : cx - w / 2 + 0.1 * s - hw, cy - 0.5 * s, hw, 1.3 * s, 0.42 * s, PAL.cupShade);
+  // Корпус книзу сужается: это силуэт стакана, а коробок у него уже есть.
+  p.poly([
+    [cx - w / 2, top], [cx + w / 2, top],
+    [cx + w / 2 - 0.3 * s, bot], [cx - w / 2 + 0.3 * s, bot],
+  ], PAL.cupBody);
+  // Кофе виден тёмной полоской у края - без неё кружка выглядит пустой.
+  p.round(cx - w / 2 + 0.15 * s, top + 0.15 * s, w - 0.3 * s, 0.7 * s, 0.3 * s, PAL.coffeeDark);
+}
+
+/**
+ * Пар над головой - главный признак, что кофе ещё действует. Три клуба на
+ * разных фазах: поднимаются, растут и тают.
+ *
+ * Фаза берётся из остатка кофе со знаком минус: остаток убывает каждый кадр,
+ * и без минуса пар опускался бы вниз вместо того, чтобы подниматься.
+ */
+function drawSteam(p: Painter, cx: number, topY: number, s: number, phase: number): void {
+  for (let i = 0; i < 3; i++) {
+    const t = (((-phase / 34 + i / 3) % 1) + 1) % 1;
+    const alpha = (1 - t) * 0.62;
+    // Почти прозрачные клубы не рисуем: на них уходит заливка, а видно их нет.
+    if (alpha < 0.03) continue;
+    const drift = Math.sin((t + i) * 4.1) * 0.85 * s;
+    p.oval(
+      cx + drift,
+      topY - t * 3.6 * s,
+      (0.55 + t * 0.7) * s,
+      (0.42 + t * 0.55) * s,
+      `rgba(243,247,255,${alpha.toFixed(3)})`,
+    );
+  }
+}
+
+/**
+ * Пар мигает на исходе кофе, а кружка - нет. Мигающая кружка читалась бы
+ * поломкой рисовки; а стынущий пар - ровно то, что и происходит: кофе
+ * заканчивается. Порог в 90 кадров - примерно последняя секунда с небольшим.
+ */
+function steamOn(coffee: number): boolean {
+  return coffee > 90 || Math.floor(coffee / 4) % 2 === 0;
 }
 
 /**
@@ -161,6 +225,8 @@ function drawSmallDev(p: Painter, x: number, y: number, pose: DevPose): void {
 
   p.grad(x + 0.4, y + 4.6, 8.2, 4.6, PAL.shirtLite, PAL.shirt, 2);
   p.round(cx - front * 4 - 0.6, y + 5.2, 1.5, 3.4, 0.7, PAL.shirtDark);
+  const coffee = pose.coffee ?? 0;
+  if (coffee > 0) drawCup(p, cx - front * 5, y + 7.6, 0.78, -front);
   p.round(cx + front * 3.4 - 1, y + 5.6, 2.2, 2.4, 1, PAL.laptop);
 
   p.oval(cx, y + 2.9, 3.7, 3.1, PAL.skin);
@@ -168,6 +234,9 @@ function drawSmallDev(p: Painter, x: number, y: number, pose: DevPose): void {
   p.oval(cx, y + 1.5, 4, 2.2, PAL.hair);
   p.oval(cx - front * 1.3, y + 1.2, 2.9, 1.7, PAL.hairLite);
   p.oval(cx + front * 1.4, y + 3.1, 0.55, 0.75, PAL.eye);
+
+  // Пар последним: он поверх всего, включая чёлку.
+  if (coffee > 0 && steamOn(coffee)) drawSteam(p, cx, y - 0.9, 0.78, coffee);
 }
 
 /**
@@ -209,6 +278,8 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
   const bodyDark = grade === 2 ? PAL.pantsDark : PAL.shirtDark;
   p.grad(x + 0.2, y + 9.2, 8.6, 8.4, bodyLite, body, 2.6);
   p.round(cx - front * 4.3 - 0.6, y + 10, 1.6, 7, 0.8, bodyDark);
+  const coffee = pose.coffee ?? 0;
+  if (coffee > 0) drawCup(p, cx - front * 5.3, y + 15, 1, -front);
 
   // Рука с ноутбуком - маленькая деталь, но именно она делает силуэт
   // айтишным, а не абстрактным человечком.
@@ -239,6 +310,9 @@ export function drawDev(p: Painter, x: number, y: number, pose: DevPose): void {
     p.round(cx - 5.4, y + 2.4, 0.8, 5.2, 0.4, PAL.headphones);
     p.round(cx + 4.6, y + 2.4, 0.8, 5.2, 0.4, PAL.headphones);
   }
+
+  // Пар последним: он поверх всего, включая наушники сеньора.
+  if (coffee > 0 && steamOn(coffee)) drawSteam(p, cx, y - 0.5, 1, coffee);
 }
 
 /**
