@@ -11,13 +11,21 @@
     <meta property="og:title" content="Путь джуна" />
     <meta property="og:description" content="Платформер в стиле Марио про карьеру в IT: от стажёра до оффера. Играть в браузере или в Telegram" />
     <meta property="og:type" content="website" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=JetBrains+Mono:wght@400;500;700&display=swap"
-    />
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!--
+      Ни одного стороннего домена в <head>: и шрифты, и этот скрипт лежат
+      рядом с игрой. Раньше здесь были fonts.googleapis.com и telegram.org,
+      оба блокирующие. Там, где эти домены недоступны, браузер ждёт не отказа,
+      а таймаута соединения - страница висит пустой десятки секунд, и игра
+      «не грузится без VPN». Свой сервер недоступен ровно тогда, когда
+      недоступна и сама игра, так что ждать нечего.
+
+      Шрифты переехали в src/style.css, файл - в public/telegram-web-app.js.
+      Последний обновляется руками: он приходит от Telegram и меняется вместе
+      с их SDK. defer, а не синхронно: порядок с модулем игры сохраняется -
+      отложенные скрипты и модули выполняются в порядке появления, - а разбор
+      страницы больше не встаёт.
+    -->
+    <script defer src="./telegram-web-app.js"></script>
   </head>
   <body>
     <div id="app">
