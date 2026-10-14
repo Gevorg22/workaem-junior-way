@@ -7,7 +7,7 @@
 
 ## Что понадобится
 
-- [ ] Доступ по SSH к серверу `111.88.152.219` (там же, где workaem)
+- [ ] Доступ по SSH к серверу `176.53.227.178` (там же, где workaem)
 - [ ] Доступ в панель Namecheap (там DNS домена workaem.com)
 - [ ] Права на правку Caddyfile и перезапуск Caddy
 - [ ] Telegram под рукой (нужен @BotFather)
@@ -48,14 +48,14 @@ Namecheap → **Domain List** → `workaem.com` → **Manage** → вкладк�
 
 | Type | Host | Value | TTL |
 |------|------|-------|-----|
-| A Record | `game` | `111.88.152.219` | Automatic |
+| A Record | `game` | `176.53.227.178` | Automatic |
 
 Сохранить (галочка справа от строки).
 
 Дождаться распространения:
 
 ```bash
-dig +short game.workaem.com     # должно вернуть 111.88.152.219
+dig +short game.workaem.com     # должно вернуть 176.53.227.178
 ```
 
 Обычно 1-15 минут. Пока не вернёт нужный IP - дальше идти бессмысленно,
@@ -76,7 +76,7 @@ Caddy на этой ВМ работает **не системным сервис
 ### 3.1. Каталог под статику
 
 ```bash
-ssh workaem@111.88.152.219
+ssh workaem@176.53.227.178
 mkdir -p /home/workaem/deploy/junior-way
 ```
 
@@ -137,7 +137,7 @@ docker compose logs --tail=40 caddy
 
 ```bash
 cd ~/Desktop/react-apps/workaem-junior-way
-DEPLOY_HOST=workaem@111.88.152.219 \
+DEPLOY_HOST=workaem@176.53.227.178 \
 DEPLOY_PATH=/home/workaem/deploy/junior-way \
 npm run deploy
 ```
@@ -365,7 +365,7 @@ npm run deploy
 
 | Симптом | Причина | Что делать |
 |---|---|---|
-| Сертификат не выпускается | DNS ещё не разошёлся | `dig +short game.workaem.com` должен вернуть 111.88.152.219 |
+| Сертификат не выпускается | DNS ещё не разошёлся | `dig +short game.workaem.com` должен вернуть 176.53.227.178 |
 | Сертификат не выпускается | Порт 80 закрыт | Caddy проверяет домен по HTTP: `sudo ufw allow 80,443/tcp` |
 | `404` на всё | Том не проброшен | Проверить строку `./junior-way:/srv/junior-way:ro` и что был `up -d`, а не `restart` |
 | `403` на всё | Каталог создан от root | `sudo chown -R workaem:workaem /home/workaem/deploy/junior-way` |
